@@ -16,22 +16,26 @@ namespace Moba.Editor
         [InitializeOnLoadMethod]
         private static void WatchBuildTrigger()
         {
-            EditorApplication.delayCall += () =>
+            EditorApplication.delayCall += CheckTrigger;
+            EditorApplication.update -= CheckTrigger;
+            EditorApplication.update += CheckTrigger;
+        }
+
+        private static void CheckTrigger()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+            if (File.Exists(TriggerFile))
             {
-                if (EditorApplication.isPlayingOrWillChangePlaymode) return;
-
-                if (File.Exists(TriggerFile))
+                try
                 {
-                    try
-                    {
-                        File.Delete(TriggerFile);
-                    }
-                    catch { }
-
-                    Debug.Log("[MobaAndroidBuilder] Build trigger detected! Starting Android APK build...");
-                    BuildApk();
+                    File.Delete(TriggerFile);
                 }
-            };
+                catch { }
+
+                Debug.Log("[MobaAndroidBuilder] Build trigger detected! Starting Android APK build...");
+                BuildApk();
+            }
         }
 
         [MenuItem("Moba/Build Android APK")]

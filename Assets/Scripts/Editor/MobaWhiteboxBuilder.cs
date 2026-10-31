@@ -286,6 +286,17 @@ namespace Moba.Editor
                 Undo.RegisterCreatedObjectUndo(camObj, "Create Camera");
             }
 
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.12f, 0.14f, 0.18f, 1f);
+            cam.allowHDR = false;
+            cam.allowMSAA = false;
+            var camData = cam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            if (camData != null)
+            {
+                camData.renderPostProcessing = false;
+                camData.allowHDROutput = false;
+            }
+
             var follow = cam.GetComponent<MobaCameraFollow>() ?? cam.gameObject.AddComponent<MobaCameraFollow>();
             follow.Target = player.transform;
             follow.Offset = new Vector3(0f, 16f, -12f);

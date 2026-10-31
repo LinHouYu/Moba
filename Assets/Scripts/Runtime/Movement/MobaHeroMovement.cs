@@ -129,7 +129,10 @@ namespace Moba.Runtime.Movement
                 {
                     var childRenderer = visualObj.GetComponent<MeshRenderer>() ?? visualObj.AddComponent<MeshRenderer>();
                     childRenderer.sharedMaterials = rootMeshRenderer.sharedMaterials;
-                    DestroyImmediate(rootMeshRenderer);
+                    if (Application.isPlaying)
+                        Destroy(rootMeshRenderer);
+                    else
+                        DestroyImmediate(rootMeshRenderer);
                 }
 
                 // Reparent direction visor if it was a child of root
@@ -140,7 +143,10 @@ namespace Moba.Runtime.Movement
                     visor.localPosition = new Vector3(0f, 0.4f, 0.5f);
                 }
 
-                DestroyImmediate(rootMeshFilter);
+                if (Application.isPlaying)
+                    Destroy(rootMeshFilter);
+                else
+                    DestroyImmediate(rootMeshFilter);
             }
         }
 
