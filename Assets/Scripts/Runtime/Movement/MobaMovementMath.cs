@@ -50,6 +50,18 @@ namespace Moba.Runtime.Movement
         }
 
         /// <summary>
+        /// Validates that character collider bounds align with ground level (feet at Y = 0)
+        /// and match visual model bottom without sinking.
+        /// </summary>
+        public static bool ValidateFeetAlignment(float colliderHeight, Vector3 colliderCenter, float visualOffsetY, out float bottomY)
+        {
+            float colliderBottom = colliderCenter.y - (colliderHeight * 0.5f);
+            float visualBottom = visualOffsetY - (colliderHeight * 0.5f);
+            bottomY = colliderBottom;
+            return Mathf.Abs(colliderBottom) < 0.001f && Mathf.Abs(colliderBottom - visualBottom) < 0.001f;
+        }
+
+        /// <summary>
         /// Converts 2D joystick input (X = horizontal, Y = vertical) into a 3D world movement direction.
         /// Standard MOBA top-down: Up (+Y) maps to world forward (+Z), Right (+X) maps to world right (+X).
         /// </summary>

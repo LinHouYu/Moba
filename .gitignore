@@ -78,3 +78,6 @@ crashlytics-build.properties
 **/[Bb]in/
 **/[Oo]bj/
 !Tests/**/*.csproj
+
+# Reference project
+NKGMobaBasedOnET-master/

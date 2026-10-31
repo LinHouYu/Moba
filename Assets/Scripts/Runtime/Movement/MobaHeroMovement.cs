@@ -61,12 +61,72 @@ namespace Moba.Runtime.Movement
         private void Awake()
         {
             characterController = GetComponent<CharacterController>();
+            EnsureVisualFeetAlignment();
             ResolveInputProvider();
         }
 
         private void Start()
         {
+            EnsureVisualFeetAlignment();
             ResolveInputProvider();
+        }
+
+        /// <summary>
+        /// Ensures standard humanoid feet alignment:
+        /// If a primitive MeshFilter is directly on the root object, its center is at Y = 0 (bottom at Y = -1),
+        /// which causes the character to sink into the floor by 1 meter when CharacterController stands at ground level.
+        /// This moves the mesh to a child 'Hero_Visual' at Y = +center.y so feet align exactly with ground (Y = 0).
+        /// </summary>
+        public void EnsureVisualFeetAlignment()
+        {
+            if (characterController == null)
+            {
+                characterController = GetComponent<CharacterController>();
+            }
+
+            var rootMeshFilter = GetComponent<MeshFilter>();
+            var rootMeshRenderer = GetComponent<MeshRenderer>();
+
+            if (characterController != null && rootMeshFilter != null)
+            {
+                // Create or find Hero_Visual child
+                Transform visualTransform = transform.Find("Hero_Visual");
+                GameObject visualObj;
+                if (visualTransform == null)
+                {
+                    visualObj = new GameObject("Hero_Visual");
+                    visualObj.transform.SetParent(transform, false);
+                }
+                else
+                {
+                    visualObj = visualTransform.gameObject;
+                }
+
+                // Place visual mesh center at collider center height (usually +1.0m) so base touches feet level (Y = 0)
+                visualObj.transform.localPosition = new Vector3(0f, characterController.center.y, 0f);
+                visualObj.transform.localRotation = Quaternion.identity;
+                visualObj.transform.localScale = Vector3.one;
+
+                var childFilter = visualObj.GetComponent<MeshFilter>() ?? visualObj.AddComponent<MeshFilter>();
+                childFilter.sharedMesh = rootMeshFilter.sharedMesh;
+
+                if (rootMeshRenderer != null)
+                {
+                    var childRenderer = visualObj.GetComponent<MeshRenderer>() ?? visualObj.AddComponent<MeshRenderer>();
+                    childRenderer.sharedMaterials = rootMeshRenderer.sharedMaterials;
+                    DestroyImmediate(rootMeshRenderer);
+                }
+
+                // Reparent direction visor if it was a child of root
+                var visor = transform.Find("Direction_Visor");
+                if (visor != null)
+                {
+                    visor.SetParent(visualObj.transform, false);
+                    visor.localPosition = new Vector3(0f, 0.4f, 0.5f);
+                }
+
+                DestroyImmediate(rootMeshFilter);
+            }
         }
 
         private void ResolveInputProvider()
@@ -80,6 +140,15 @@ namespace Moba.Runtime.Movement
                 inputProvider = GetComponent<IJoystickInputProvider>()
                     ?? GetComponentInParent<IJoystickInputProvider>()
                     ?? FindAnyObjectByType<MobaJoystickInput>();
+            }
+
+            if (inputProvider is MobaJoystickInput joystickInput)
+            {
+                var joystickUI = FindAnyObjectByType<MobaVirtualJoystickUI>();
+                if (joystickUI != null)
+                {
+                    joystickInput.BindVirtualJoystick(joystickUI);
+                }
             }
         }
 

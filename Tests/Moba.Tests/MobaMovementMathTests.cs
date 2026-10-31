@@ -200,5 +200,44 @@ namespace Moba.Tests
             Assert.That(moveInput.x, Is.EqualTo(0f).Within(Tolerance));
             Assert.That(moveInput.y, Is.EqualTo(0f).Within(Tolerance));
         }
+
+        [Test]
+        public void ValidateFeetAlignment_WhenStandardHumanoid_AlignsWithGroundLevel()
+        {
+            float height = 2.0f;
+            Vector3 center = new Vector3(0f, 1.0f, 0f);
+            float visualOffsetY = 1.0f;
+
+            bool isAligned = MobaMovementMath.ValidateFeetAlignment(height, center, visualOffsetY, out float bottomY);
+
+            Assert.That(isAligned, Is.True);
+            Assert.That(bottomY, Is.EqualTo(0f).Within(Tolerance));
+        }
+
+        [Test]
+        public void ValidateFeetAlignment_WhenVisualSinks_DetectsMismatch()
+        {
+            // Old bug: visual mesh at Y = 0 causes bottom to sink to Y = -1.0
+            float height = 2.0f;
+            Vector3 center = new Vector3(0f, 1.0f, 0f);
+            float visualOffsetY = 0.0f;
+
+            bool isAligned = MobaMovementMath.ValidateFeetAlignment(height, center, visualOffsetY, out float bottomY);
+
+            Assert.That(isAligned, Is.False);
+        }
+
+        [Test]
+        public void ValidateFeetAlignment_WithCustomHeroHeight_CalculatesProperCenter()
+        {
+            float height = 2.4f;
+            Vector3 center = new Vector3(0f, 1.2f, 0f);
+            float visualOffsetY = 1.2f;
+
+            bool isAligned = MobaMovementMath.ValidateFeetAlignment(height, center, visualOffsetY, out float bottomY);
+
+            Assert.That(isAligned, Is.True);
+            Assert.That(bottomY, Is.EqualTo(0f).Within(Tolerance));
+        }
     }
 }

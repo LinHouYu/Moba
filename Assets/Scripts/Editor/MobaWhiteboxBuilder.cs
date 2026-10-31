@@ -26,9 +26,11 @@ namespace Moba.Editor
                 var activeScene = EditorSceneManager.GetActiveScene();
                 if (activeScene.path == ScenePath || activeScene.name == "Game")
                 {
-                    if (GameObject.Find("Whitebox_Ground") == null || GameObject.Find("Moba_Hero_Player") == null)
+                    var player = GameObject.Find("Moba_Hero_Player");
+                    bool needsUpgrade = player == null || player.transform.Find("Hero_Visual") == null;
+                    if (needsUpgrade || GameObject.Find("Whitebox_Ground") == null)
                     {
-                        Debug.Log("[MobaWhiteboxBuilder] Auto-generating whitebox objects into Game scene...");
+                        Debug.Log("[MobaWhiteboxBuilder] Upgrading character hierarchy to standard humanoid feet alignment...");
                         BuildScene();
                     }
                 }
@@ -106,27 +108,43 @@ namespace Moba.Editor
                 }
             }
 
-            // 3. Player
+            // 3. Player (Standard Humanoid / Character Hierarchy: Root at Feet Y = 0)
             GameObject player = GameObject.Find("Moba_Hero_Player");
+            if (player != null && player.transform.Find("Hero_Visual") == null)
+            {
+                // Rebuild old mismatch player into standard humanoid hierarchy
+                Undo.DestroyObjectImmediate(player);
+                player = null;
+            }
+
             if (player == null)
             {
-                player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                player.name = "Moba_Hero_Player";
+                // Root GameObject with pivot at FEET (0, 0, 0)
+                player = new GameObject("Moba_Hero_Player");
+                player.transform.position = Vector3.zero;
                 Undo.RegisterCreatedObjectUndo(player, "Create Player");
 
-                // Remove default capsule collider and add CharacterController
-                var defaultCol = player.GetComponent<Collider>();
-                if (defaultCol != null) Object.DestroyImmediate(defaultCol);
-
+                // CharacterController with feet at 0 and head at 2.0m
                 var cc = player.AddComponent<CharacterController>();
                 cc.height = 2f;
                 cc.radius = 0.5f;
-                cc.center = new Vector3(0f, 1f, 0f);
+                cc.center = new Vector3(0f, 1f, 0f); // Center at Y = 1.0, base touches ground at Y = 0.0
                 cc.stepOffset = 0.3f;
                 cc.slopeLimit = 45f;
+                cc.minMoveDistance = 0f;
 
-                // Hero material
-                var heroRenderer = player.GetComponent<MeshRenderer>();
+                // Child Visual Model: Capsule offset by +1.0m Y so bottom aligns with feet at Y = 0.0
+                GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                visual.name = "Hero_Visual";
+                visual.transform.SetParent(player.transform, false);
+                visual.transform.localPosition = new Vector3(0f, 1f, 0f);
+                visual.transform.localRotation = Quaternion.identity;
+                visual.transform.localScale = Vector3.one;
+
+                var visualCol = visual.GetComponent<Collider>();
+                if (visualCol != null) Object.DestroyImmediate(visualCol);
+
+                var heroRenderer = visual.GetComponent<MeshRenderer>();
                 if (heroRenderer != null)
                 {
                     var heroMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
@@ -135,11 +153,11 @@ namespace Moba.Editor
                     heroRenderer.sharedMaterial = heroMat;
                 }
 
-                // Direction Visor
+                // Direction Visor on head
                 GameObject visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 visor.name = "Direction_Visor";
-                visor.transform.parent = player.transform;
-                visor.transform.localPosition = new Vector3(0f, 1.4f, 0.5f);
+                visor.transform.SetParent(visual.transform, false);
+                visor.transform.localPosition = new Vector3(0f, 0.4f, 0.5f);
                 visor.transform.localScale = new Vector3(0.35f, 0.2f, 0.5f);
 
                 var visorCol = visor.GetComponent<Collider>();
@@ -154,7 +172,7 @@ namespace Moba.Editor
                     visorRenderer.sharedMaterial = visorMat;
                 }
             }
-            player.transform.position = new Vector3(0f, 1f, 0f);
+            player.transform.position = Vector3.zero;
 
             var joystickInput = player.GetComponent<MobaJoystickInput>() ?? player.AddComponent<MobaJoystickInput>();
             var heroMovement = player.GetComponent<MobaHeroMovement>() ?? player.AddComponent<MobaHeroMovement>();
