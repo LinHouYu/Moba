@@ -26,11 +26,23 @@ namespace Moba.Editor
                 var activeScene = EditorSceneManager.GetActiveScene();
                 if (activeScene.path == ScenePath || activeScene.name == "Game")
                 {
+                    Camera cam = Camera.main;
                     var player = GameObject.Find("Moba_Hero_Player");
-                    bool needsUpgrade = player == null || player.transform.Find("Hero_Visual") == null;
-                    if (needsUpgrade || GameObject.Find("Whitebox_Ground") == null)
+                    var touchZone = GameObject.Find("Joystick_TouchZone");
+                    var handle = GameObject.Find("Joystick_Handle");
+
+                    bool needsUpgrade = player == null
+                        || player.transform.Find("Hero_Visual") == null
+                        || GameObject.Find("Whitebox_Ground") == null
+                        || cam == null
+                        || cam.GetComponent<MobaCameraFollow>() == null
+                        || touchZone == null
+                        || touchZone.GetComponent<MobaVirtualJoystickUI>() == null
+                        || handle == null;
+
+                    if (needsUpgrade)
                     {
-                        Debug.Log("[MobaWhiteboxBuilder] Upgrading character hierarchy to standard humanoid feet alignment...");
+                        Debug.Log("[MobaWhiteboxBuilder] Auto-repairing MOBA scene setup...");
                         BuildScene();
                     }
                 }
@@ -180,22 +192,26 @@ namespace Moba.Editor
 
             // 4. UI Canvas & Virtual Joystick
             GameObject canvasObj = GameObject.Find("Moba_UI_Canvas");
-            if (canvasObj == null)
+            if (canvasObj != null)
             {
-                canvasObj = new GameObject("Moba_UI_Canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-                Undo.RegisterCreatedObjectUndo(canvasObj, "Create Canvas");
-
-                Canvas canvas = canvasObj.GetComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
-                CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920, 1080);
-                scaler.matchWidthOrHeight = 0.5f;
+                Undo.DestroyObjectImmediate(canvasObj);
+                canvasObj = null;
             }
 
+            canvasObj = new GameObject("Moba_UI_Canvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            Undo.RegisterCreatedObjectUndo(canvasObj, "Create Canvas");
+
+            Canvas canvas = canvasObj.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+            CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+            scaler.matchWidthOrHeight = 0.5f;
+
             // Ensure EventSystem
-            if (Object.FindAnyObjectByType<EventSystem>() == null)
+            var existingEventSystem = Object.FindAnyObjectByType<EventSystem>();
+            if (existingEventSystem == null)
             {
                 GameObject esObj = new GameObject("EventSystem");
                 esObj.AddComponent<EventSystem>();
@@ -208,23 +224,8 @@ namespace Moba.Editor
             }
 
             // Touch Zone
-            Transform touchZoneTransform = canvasObj.transform.Find("Joystick_TouchZone");
-            if (touchZoneTransform != null && touchZoneTransform.GetComponent<RectTransform>() == null)
-            {
-                Object.DestroyImmediate(touchZoneTransform.gameObject);
-                touchZoneTransform = null;
-            }
-
-            GameObject touchZoneObj;
-            if (touchZoneTransform == null)
-            {
-                touchZoneObj = new GameObject("Joystick_TouchZone", typeof(RectTransform));
-                touchZoneObj.transform.SetParent(canvasObj.transform, false);
-            }
-            else
-            {
-                touchZoneObj = touchZoneTransform.gameObject;
-            }
+            GameObject touchZoneObj = new GameObject("Joystick_TouchZone", typeof(RectTransform));
+            touchZoneObj.transform.SetParent(canvasObj.transform, false);
 
             RectTransform touchZoneRect = touchZoneObj.GetComponent<RectTransform>();
             touchZoneRect.anchorMin = new Vector2(0f, 0f);
@@ -233,28 +234,13 @@ namespace Moba.Editor
             touchZoneRect.offsetMin = Vector2.zero;
             touchZoneRect.offsetMax = Vector2.zero;
 
-            Image touchZoneImg = touchZoneObj.GetComponent<Image>() ?? touchZoneObj.AddComponent<Image>();
+            Image touchZoneImg = touchZoneObj.AddComponent<Image>();
             touchZoneImg.color = new Color(0f, 0f, 0f, 0.001f);
             touchZoneImg.raycastTarget = true;
 
             // Background
-            Transform bgTransform = touchZoneObj.transform.Find("Joystick_Background");
-            if (bgTransform != null && bgTransform.GetComponent<RectTransform>() == null)
-            {
-                Object.DestroyImmediate(bgTransform.gameObject);
-                bgTransform = null;
-            }
-
-            GameObject bgObj;
-            if (bgTransform == null)
-            {
-                bgObj = new GameObject("Joystick_Background", typeof(RectTransform));
-                bgObj.transform.SetParent(touchZoneObj.transform, false);
-            }
-            else
-            {
-                bgObj = bgTransform.gameObject;
-            }
+            GameObject bgObj = new GameObject("Joystick_Background", typeof(RectTransform));
+            bgObj.transform.SetParent(touchZoneObj.transform, false);
 
             RectTransform bgRect = bgObj.GetComponent<RectTransform>();
             bgRect.anchorMin = new Vector2(0f, 0f);
@@ -263,31 +249,16 @@ namespace Moba.Editor
             bgRect.anchoredPosition = new Vector2(250f, 250f);
             bgRect.sizeDelta = new Vector2(220f, 220f);
 
-            Image bgImg = bgObj.GetComponent<Image>() ?? bgObj.AddComponent<Image>();
+            Image bgImg = bgObj.AddComponent<Image>();
             bgImg.color = new Color(0.12f, 0.15f, 0.2f, 0.65f);
             bgImg.raycastTarget = false;
 
-            CanvasGroup bgCanvasGroup = bgObj.GetComponent<CanvasGroup>() ?? bgObj.AddComponent<CanvasGroup>();
+            CanvasGroup bgCanvasGroup = bgObj.AddComponent<CanvasGroup>();
             bgCanvasGroup.alpha = 0.65f;
 
             // Handle
-            Transform handleTransform = bgObj.transform.Find("Joystick_Handle");
-            if (handleTransform != null && handleTransform.GetComponent<RectTransform>() == null)
-            {
-                Object.DestroyImmediate(handleTransform.gameObject);
-                handleTransform = null;
-            }
-
-            GameObject handleObj;
-            if (handleTransform == null)
-            {
-                handleObj = new GameObject("Joystick_Handle", typeof(RectTransform));
-                handleObj.transform.SetParent(bgObj.transform, false);
-            }
-            else
-            {
-                handleObj = handleTransform.gameObject;
-            }
+            GameObject handleObj = new GameObject("Joystick_Handle", typeof(RectTransform));
+            handleObj.transform.SetParent(bgObj.transform, false);
 
             RectTransform handleRect = handleObj.GetComponent<RectTransform>();
             handleRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -296,12 +267,12 @@ namespace Moba.Editor
             handleRect.anchoredPosition = Vector2.zero;
             handleRect.sizeDelta = new Vector2(90f, 90f);
 
-            Image handleImg = handleObj.GetComponent<Image>() ?? handleObj.AddComponent<Image>();
+            Image handleImg = handleObj.AddComponent<Image>();
             handleImg.color = new Color(0.85f, 0.92f, 1f, 0.85f);
             handleImg.raycastTarget = false;
 
             // Virtual Joystick Component
-            var joystickUI = touchZoneObj.GetComponent<MobaVirtualJoystickUI>() ?? touchZoneObj.AddComponent<MobaVirtualJoystickUI>();
+            var joystickUI = touchZoneObj.AddComponent<MobaVirtualJoystickUI>();
             joystickUI.SetReferences(bgRect, handleRect, bgCanvasGroup);
             joystickInput.BindVirtualJoystick(joystickUI);
 

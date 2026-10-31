@@ -101,11 +101,62 @@ namespace Moba.Runtime.Input
                 targetCamera = null;
             }
 
+            // Ensure EventSystem exists so pointer events are dispatched
+            if (UnityEngine.EventSystems.EventSystem.current == null && UnityEngine.Object.FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
+            {
+                GameObject esObj = new GameObject("EventSystem");
+                esObj.AddComponent<UnityEngine.EventSystems.EventSystem>();
+#if ENABLE_INPUT_SYSTEM
+                esObj.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
+#else
+                esObj.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+#endif
+            }
+
+            // Ensure touch zone has raycastable graphic
+            var touchImg = GetComponent<Image>();
+            if (touchImg != null)
+            {
+                touchImg.raycastTarget = true;
+            }
+
+            // Auto-resolve backgroundRect if unassigned
+            if (backgroundRect == null)
+            {
+                var bg = transform.Find("Joystick_Background");
+                if (bg != null) backgroundRect = bg.GetComponent<RectTransform>();
+            }
+
             if (backgroundRect != null)
             {
                 // Ensure background has pivot at center (0.5, 0.5)
                 backgroundRect.pivot = new Vector2(0.5f, 0.5f);
                 defaultAnchoredPosition = backgroundRect.anchoredPosition;
+
+                // Auto-resolve or create handleRect if unassigned
+                if (handleRect == null)
+                {
+                    var handle = backgroundRect.Find("Joystick_Handle");
+                    if (handle != null)
+                    {
+                        handleRect = handle.GetComponent<RectTransform>();
+                    }
+                    else
+                    {
+                        GameObject handleObj = new GameObject("Joystick_Handle", typeof(RectTransform));
+                        handleObj.transform.SetParent(backgroundRect, false);
+                        handleRect = handleObj.GetComponent<RectTransform>();
+                        handleRect.anchorMin = new Vector2(0.5f, 0.5f);
+                        handleRect.anchorMax = new Vector2(0.5f, 0.5f);
+                        handleRect.pivot = new Vector2(0.5f, 0.5f);
+                        handleRect.anchoredPosition = Vector2.zero;
+                        handleRect.sizeDelta = new Vector2(90f, 90f);
+
+                        var handleImg = handleObj.AddComponent<Image>();
+                        handleImg.color = new Color(0.85f, 0.92f, 1f, 0.85f);
+                        handleImg.raycastTarget = false;
+                    }
+                }
             }
 
             if (handleRect != null)

@@ -1,5 +1,6 @@
 using UnityEngine;
 using Moba.Runtime.Input;
+using Moba.Runtime.CameraSystem;
 
 namespace Moba.Runtime.Movement
 {
@@ -69,6 +70,20 @@ namespace Moba.Runtime.Movement
         {
             EnsureVisualFeetAlignment();
             ResolveInputProvider();
+            EnsureCameraFollow();
+        }
+
+        private void EnsureCameraFollow()
+        {
+            Camera cam = Camera.main;
+            if (cam != null)
+            {
+                var follow = cam.GetComponent<MobaCameraFollow>() ?? cam.gameObject.AddComponent<MobaCameraFollow>();
+                if (follow.Target == null)
+                {
+                    follow.Target = transform;
+                }
+            }
         }
 
         /// <summary>

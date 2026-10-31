@@ -1,26 +1,30 @@
 using UnityEngine;
+using Moba.Runtime.Movement;
 
 namespace Moba.Runtime.CameraSystem
 {
     /// <summary>
     /// Smooth top-down isometric MOBA camera follower.
     /// Runs in LateUpdate to prevent jitter after character movement.
+    /// Auto-resolves target if not assigned in Inspector.
     /// </summary>
+    [ExecuteAlways]
+    [DisallowMultipleComponent]
     public class MobaCameraFollow : MonoBehaviour
     {
         [Header("Target")]
         [SerializeField] private Transform target;
 
-        [Header("Camera Geometry")]
-        [Tooltip("Relative position offset from the target.")]
-        [SerializeField] private Vector3 offset = new Vector3(0f, 15f, -11f);
+        [Header("Camera Geometry (Inspector Tunable)")]
+        [Tooltip("Relative position offset from the target (X = lateral, Y = height, Z = forward/back).")]
+        [SerializeField] private Vector3 offset = new Vector3(0f, 16f, -12f);
 
-        [Tooltip("Fixed camera pitch angle in degrees.")]
-        [SerializeField] private float pitchAngle = 53f;
+        [Tooltip("Fixed camera pitch angle in degrees (MOBA isometric typically 50° - 55°).")]
+        [SerializeField] [Range(30f, 80f)] private float pitchAngle = 53f;
 
         [Header("Smoothing")]
-        [Tooltip("Smooth damp time (smaller = tighter follow, larger = looser).")]
-        [SerializeField] private float smoothTime = 0.12f;
+        [Tooltip("Smooth damp time in seconds (smaller = tighter follow, larger = looser).")]
+        [SerializeField] [Range(0.01f, 0.5f)] private float smoothTime = 0.12f;
 
         private Vector3 currentVelocity = Vector3.zero;
 
@@ -36,12 +40,27 @@ namespace Moba.Runtime.CameraSystem
             set => offset = value;
         }
 
+        public float PitchAngle
+        {
+            get => pitchAngle;
+            set
+            {
+                pitchAngle = value;
+                UpdateRotation();
+            }
+        }
+
+        private void Awake()
+        {
+            EnsureTarget();
+        }
+
         private void Start()
         {
+            EnsureTarget();
             UpdateRotation();
             if (target != null)
             {
-                // Snap directly on start
                 transform.position = target.position + offset;
             }
         }
@@ -50,12 +69,43 @@ namespace Moba.Runtime.CameraSystem
         {
             if (target == null)
             {
-                return;
+                EnsureTarget();
+                if (target == null)
+                {
+                    return;
+                }
             }
 
             Vector3 targetPosition = target.position + offset;
-            transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref currentVelocity, smoothTime);
+            if (Application.isPlaying)
+            {
+                transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref currentVelocity, smoothTime);
+            }
+            else
+            {
+                // In Editor, snap directly so camera always aligns with target in Scene View
+                transform.position = targetPosition;
+            }
             UpdateRotation();
+        }
+
+        public void EnsureTarget()
+        {
+            if (target != null) return;
+
+            var hero = Object.FindAnyObjectByType<MobaHeroMovement>();
+            if (hero != null)
+            {
+                target = hero.transform;
+            }
+            else
+            {
+                var playerObj = GameObject.Find("Moba_Hero_Player");
+                if (playerObj != null)
+                {
+                    target = playerObj.transform;
+                }
+            }
         }
 
         private void UpdateRotation()

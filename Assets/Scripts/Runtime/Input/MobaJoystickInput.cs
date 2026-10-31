@@ -7,24 +7,60 @@ namespace Moba.Runtime.Input
 {
     /// <summary>
     /// Unified input manager that aggregates Virtual Joystick input and Keyboard (WASD/Arrows).
+    /// Auto-resolves and binds Virtual Joystick UI if unassigned.
     /// </summary>
+    [DisallowMultipleComponent]
     public class MobaJoystickInput : MonoBehaviour, IJoystickInputProvider
     {
+        [Header("References")]
         [SerializeField] private MobaVirtualJoystickUI virtualJoystick;
+
+        [Header("Settings")]
         [SerializeField] private bool enableKeyboardFallback = true;
 
-        private Vector2 combinedInput = Vector2.zero;
+        [Header("Debug")]
+        [SerializeField] private Vector2 currentCombinedInput = Vector2.zero;
 
-        public Vector2 MoveInput => combinedInput;
-        public bool HasMoveInput => combinedInput.sqrMagnitude > 0.0001f;
+        public Vector2 MoveInput => currentCombinedInput;
+        public bool HasMoveInput => currentCombinedInput.sqrMagnitude > 0.0001f;
 
         public void BindVirtualJoystick(MobaVirtualJoystickUI joystick)
         {
             virtualJoystick = joystick;
         }
 
+        private void Awake()
+        {
+            EnsureVirtualJoystick();
+        }
+
+        private void Start()
+        {
+            EnsureVirtualJoystick();
+        }
+
+        private void EnsureVirtualJoystick()
+        {
+            if (virtualJoystick != null) return;
+
+            virtualJoystick = Object.FindAnyObjectByType<MobaVirtualJoystickUI>();
+            if (virtualJoystick == null)
+            {
+                var touchZone = GameObject.Find("Joystick_TouchZone");
+                if (touchZone != null)
+                {
+                    virtualJoystick = touchZone.GetComponent<MobaVirtualJoystickUI>() ?? touchZone.AddComponent<MobaVirtualJoystickUI>();
+                }
+            }
+        }
+
         private void Update()
         {
+            if (virtualJoystick == null)
+            {
+                EnsureVirtualJoystick();
+            }
+
             Vector2 input = Vector2.zero;
 
             // 1. Try Virtual Joystick first
@@ -44,7 +80,7 @@ namespace Moba.Runtime.Input
                 input.Normalize();
             }
 
-            combinedInput = input;
+            currentCombinedInput = input;
         }
 
         private Vector2 ReadKeyboardInput()
