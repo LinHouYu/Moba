@@ -42,6 +42,10 @@ namespace Moba.Runtime.Movement
         private float currentHorizontalSpeed = 0f;
         private float verticalVelocity = 0f;
         private Vector3 currentMoveDirection = Vector3.forward;
+        private Transform cachedVisualTransform;
+        private bool hasExternalDisplacementOverride = false;
+        private Vector3 externalHorizontalVelocity = Vector3.zero;
+        private float visualExtraHeightOffset = 0f;
 
         public float MoveSpeed
         {
@@ -53,6 +57,52 @@ namespace Moba.Runtime.Movement
         {
             get => turnSpeed;
             set => turnSpeed = Mathf.Max(0f, value);
+        }
+
+        public float VisualExtraHeightOffset
+        {
+            get => visualExtraHeightOffset;
+            set
+            {
+                visualExtraHeightOffset = value;
+                ApplyVisualHeightOffset();
+            }
+        }
+
+        public void SetExternalHorizontalOverride(Vector3 worldHorizontalVelocity, Vector3? facingDir = null)
+        {
+            hasExternalDisplacementOverride = true;
+            externalHorizontalVelocity = new Vector3(worldHorizontalVelocity.x, 0f, worldHorizontalVelocity.z);
+            if (facingDir.HasValue)
+            {
+                Vector3 flat = new Vector3(facingDir.Value.x, 0f, facingDir.Value.z);
+                if (flat.sqrMagnitude > 0.0001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(flat.normalized, Vector3.up);
+                }
+            }
+        }
+
+        public void ClearExternalHorizontalOverride()
+        {
+            hasExternalDisplacementOverride = false;
+            externalHorizontalVelocity = Vector3.zero;
+            currentHorizontalSpeed = 0f;
+        }
+
+        private void ApplyVisualHeightOffset()
+        {
+            if (cachedVisualTransform == null)
+            {
+                cachedVisualTransform = transform.Find("Hero_Visual");
+            }
+            if (cachedVisualTransform != null && characterController != null)
+            {
+                cachedVisualTransform.localPosition = new Vector3(
+                    0f,
+                    characterController.center.y + visualExtraHeightOffset,
+                    0f);
+            }
         }
 
         public float CurrentSpeed => currentHorizontalSpeed;
@@ -204,8 +254,8 @@ namespace Moba.Runtime.Movement
                 deceleration,
                 dt);
 
-            // 2. Update rotation if input is active
-            if (inputMagnitude > 0.01f)
+            // 2. Update rotation if input is active and not locked by skill displacement
+            if (!hasExternalDisplacementOverride && inputMagnitude > 0.01f)
             {
                 float targetAngle = MobaMovementMath.CalculateTargetAngle(rawInput);
                 float newAngle = MobaMovementMath.RotateTowardsAngle(transform.eulerAngles.y, targetAngle, turnSpeed, dt);
@@ -228,12 +278,16 @@ namespace Moba.Runtime.Movement
             }
 
             // 4. Calculate total velocity and apply movement
-            Vector3 velocity = (transform.forward * currentHorizontalSpeed) + (Vector3.up * verticalVelocity);
+            Vector3 horizontalVel = hasExternalDisplacementOverride
+                ? externalHorizontalVelocity
+                : (transform.forward * currentHorizontalSpeed);
+            Vector3 velocity = horizontalVel + (Vector3.up * verticalVelocity);
             characterController.Move(velocity * dt);
+            ApplyVisualHeightOffset();
 
             // 5. Update debug fields
-            debugCurrentSpeed = currentHorizontalSpeed;
-            debugIsMoving = currentHorizontalSpeed > 0.05f;
+            debugCurrentSpeed = horizontalVel.magnitude;
+            debugIsMoving = debugCurrentSpeed > 0.05f;
             debugMoveDirection = transform.forward;
         }
     }

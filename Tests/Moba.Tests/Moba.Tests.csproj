@@ -22,6 +22,7 @@
       <Private>true</Private>
     </Reference>
     <Compile Include="..\..\Assets\Scripts\Runtime\Movement\MobaMovementMath.cs" Link="MobaMovementMath.cs" />
+    <Compile Include="..\..\Assets\Scripts\Runtime\Hero\YunZhongJunLogic.cs" Link="YunZhongJunLogic.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -56,6 +56,7 @@ namespace Moba.Runtime.Input
         private Camera targetCamera;
         private Canvas rootCanvas;
         private Vector2 currentInput = Vector2.zero;
+        private int activePointerId = int.MinValue;
 
         public Vector2 MoveInput => currentInput;
         public bool HasMoveInput => currentInput.sqrMagnitude > 0.0001f;
@@ -189,6 +190,12 @@ namespace Moba.Runtime.Input
 
         public void OnPointerDown(PointerEventData eventData)
         {
+            if (debugIsPointerDown && activePointerId != eventData.pointerId)
+            {
+                return;
+            }
+
+            activePointerId = eventData.pointerId;
             debugIsPointerDown = true;
             SetAlpha(activeAlpha);
 
@@ -217,11 +224,21 @@ namespace Moba.Runtime.Input
 
         public void OnDrag(PointerEventData eventData)
         {
+            if (!debugIsPointerDown || eventData.pointerId != activePointerId)
+            {
+                return;
+            }
             UpdateHandlePosition(eventData.position);
         }
 
         public void OnPointerUp(PointerEventData eventData)
         {
+            if (eventData.pointerId != activePointerId && activePointerId != int.MinValue)
+            {
+                return;
+            }
+
+            activePointerId = int.MinValue;
             debugIsPointerDown = false;
             currentInput = Vector2.zero;
             debugInput = Vector2.zero;
