@@ -136,5 +136,69 @@ namespace Moba.Tests
 
             Assert.That(speed, Is.EqualTo(5.0f).Within(Tolerance));
         }
+
+        [TestCase(-100f, 0f, -1f, 0f)]      // Left
+        [TestCase(100f, 0f, 1f, 0f)]        // Right
+        [TestCase(0f, 100f, 0f, 1f)]        // Up
+        [TestCase(0f, -100f, 0f, -1f)]      // Down
+        [TestCase(-100f, 100f, -0.7071f, 0.7071f)] // Top-Left (clamped to unit circle)
+        [TestCase(100f, -100f, 0.7071f, -0.7071f)] // Bottom-Right (clamped to unit circle)
+        public void ProcessHandleDisplacement_AccuratelyOutputsAllFourQuadrants(float dx, float dy, float expectedX, float expectedY)
+        {
+            float handleRange = 100f;
+            float deadzone = 0f; // zero deadzone to test raw angle mapping
+
+            MobaMovementMath.ProcessHandleDisplacement(
+                new Vector2(dx, dy),
+                handleRange,
+                deadzone,
+                out Vector2 handlePos,
+                out Vector2 moveInput);
+
+            Assert.That(moveInput.x, Is.EqualTo(expectedX).Within(0.01f));
+            Assert.That(moveInput.y, Is.EqualTo(expectedY).Within(0.01f));
+        }
+
+        [Test]
+        public void ProcessHandleDisplacement_ClampsHandlePositionToRange()
+        {
+            float handleRange = 80f;
+            // Drag 200 pixels to the left
+            Vector2 displacement = new Vector2(-200f, 0f);
+
+            MobaMovementMath.ProcessHandleDisplacement(
+                displacement,
+                handleRange,
+                0.1f,
+                out Vector2 handlePos,
+                out Vector2 moveInput);
+
+            // Handle should be clamped to 80
+            Assert.That(handlePos.x, Is.EqualTo(-80f).Within(Tolerance));
+            Assert.That(handlePos.y, Is.EqualTo(0f).Within(Tolerance));
+
+            // Move input should be full left (-1, 0)
+            Assert.That(moveInput.x, Is.EqualTo(-1f).Within(Tolerance));
+            Assert.That(moveInput.y, Is.EqualTo(0f).Within(Tolerance));
+        }
+
+        [Test]
+        public void ProcessHandleDisplacement_WhenInsideDeadzone_OutputsZeroInput()
+        {
+            float handleRange = 100f;
+            float deadzone = 0.2f;
+            Vector2 smallDisplacement = new Vector2(10f, 0f); // 10% magnitude < 20% deadzone
+
+            MobaMovementMath.ProcessHandleDisplacement(
+                smallDisplacement,
+                handleRange,
+                deadzone,
+                out Vector2 handlePos,
+                out Vector2 moveInput);
+
+            Assert.That(handlePos.x, Is.EqualTo(10f).Within(Tolerance));
+            Assert.That(moveInput.x, Is.EqualTo(0f).Within(Tolerance));
+            Assert.That(moveInput.y, Is.EqualTo(0f).Within(Tolerance));
+        }
     }
 }

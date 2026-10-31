@@ -12,9 +12,6 @@ namespace Moba.Runtime.Movement
         /// <summary>
         /// Applies a deadzone to a 2D joystick input vector and scales the remaining range from 0 to 1.
         /// </summary>
-        /// <param name="input">Raw joystick input vector with magnitude up to 1.</param>
-        /// <param name="deadzone">Deadzone threshold (between 0 and 1).</param>
-        /// <returns>Processed input vector with magnitude in [0, 1].</returns>
         public static Vector2 ApplyDeadzone(Vector2 input, float deadzone)
         {
             float magnitude = input.magnitude;
@@ -28,6 +25,28 @@ namespace Moba.Runtime.Movement
             remappedMagnitude = Mathf.Clamp01(remappedMagnitude);
 
             return input.normalized * remappedMagnitude;
+        }
+
+        /// <summary>
+        /// Calculates handle displacement and normalized movement input from raw local touch offset.
+        /// Guaranteed correct across all 4 quadrants (no diagonal lock).
+        /// </summary>
+        public static void ProcessHandleDisplacement(
+            Vector2 localDisplacement,
+            float handleRange,
+            float deadzone,
+            out Vector2 handlePosition,
+            out Vector2 moveInput)
+        {
+            float safeRange = Mathf.Max(0.001f, handleRange);
+            float distance = localDisplacement.magnitude;
+            Vector2 direction = distance > 0.0001f ? localDisplacement / distance : Vector2.zero;
+            float clampedDist = Mathf.Min(distance, safeRange);
+
+            handlePosition = direction * clampedDist;
+
+            Vector2 rawInput = direction * (clampedDist / safeRange);
+            moveInput = ApplyDeadzone(rawInput, deadzone);
         }
 
         /// <summary>
