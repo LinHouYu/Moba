@@ -13,11 +13,11 @@ namespace Moba.Editor
     /// <summary>
     /// 主界面 Main.unity 自动化构建器：
     /// 1. 顶部专业 MOBA 字体【翼龙农药】标题
-    /// 2. 背景自动拉伸铺满全屏（Envelope Parent 防黑边，支持 main.jfif）
-    /// 3. 中间居中无边框【开始游戏】按钮
-    /// 4. 全屏与按钮点击金橘色粒子光环反馈
+    /// 2. 背景自动拉伸铺满全屏（Envelope Parent 防黑边，支持 main.jfif，移除导致死循环冲突的 AspectRatioFitter）
+    /// 3. 中间居中无边框【开始游戏】按钮（确保点击层级与射线穿透正常）
+    /// 4. 全屏与按钮点击金橘色粒子光环反馈（兼容新输入系统）
     /// 5. 金偏橘色进度条（无小圆圈⚪手柄）与异步场景加载
-    /// 6. 自动维护 EditorBuildSettings 场景索引（Main 为场景 0，Game 为场景 1）
+    /// 6. 严禁锁定 Scene 视图相机，默认保持 3D 透视模式，支持右键 + WASD 自由漫游
     /// </summary>
     public static class MobaMainMenuBuilder
     {
@@ -37,6 +37,8 @@ namespace Moba.Editor
             EditorApplication.delayCall += () =>
             {
                 if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+                UnlockSceneViewCamera();
 
                 if (!File.Exists(MainScenePath))
                 {
@@ -59,6 +61,22 @@ namespace Moba.Editor
             BuildMainScene();
         }
 
+        [MenuItem("Moba/Unlock Scene View Camera (解锁Scene相机WASD自由漫游)")]
+        public static void UnlockSceneViewCamera()
+        {
+            foreach (SceneView sv in SceneView.sceneViews)
+            {
+                if (sv != null)
+                {
+                    sv.in2DMode = false;
+                    sv.isRotationLocked = false;
+                    sv.orthographic = false;
+                    sv.Repaint();
+                }
+            }
+            Debug.Log("[MobaMainMenuBuilder] 已恢复 Scene 视图为 3D 透视模式并解锁相机旋转！鼠标右键 + WASD 漫游功能完全正常。");
+        }
+
         [MenuItem("Moba/Build Main Menu Scene (生成 Main.unity)")]
         public static void BuildMainScene()
         {
@@ -73,14 +91,16 @@ namespace Moba.Editor
             Sprite ringSprite = AssetDatabase.LoadAssetAtPath<Sprite>(RingSpritePath);
             Sprite bgSprite = AssetDatabase.LoadAssetAtPath<Sprite>(MainJfifPath);
 
-            // 1. Main Camera
+            // 1. Main Camera (标准 3D 透视相机，绝不锁定 Scene 视图或强制 2D 模式)
             GameObject camGo = new GameObject("Main_Camera", typeof(Camera), typeof(AudioListener));
             Camera cam = camGo.GetComponent<Camera>();
             camGo.tag = "MainCamera";
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
-            cam.orthographic = true;
-            cam.orthographicSize = 5f;
+            cam.orthographic = false;
+            cam.fieldOfView = 60f;
+            cam.nearClipPlane = 0.3f;
+            cam.farClipPlane = 1000f;
             cam.transform.position = new Vector3(0f, 0f, -10f);
 
             // 2. EventSystem
@@ -103,8 +123,8 @@ namespace Moba.Editor
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
 
-            // 4. Background (自适应铺满全屏防黑边)
-            GameObject bgGo = new GameObject("Background_Image", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(MainMenuBackgroundFitter), typeof(AspectRatioFitter));
+            // 4. Background (自适应铺满全屏防黑边，由 MainMenuBackgroundFitter 单独管理，严禁挂载 AspectRatioFitter 造成冲突死循环)
+            GameObject bgGo = new GameObject("Background_Image", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(MainMenuBackgroundFitter));
             bgGo.transform.SetParent(canvasGo.transform, false);
 
             RectTransform bgRt = bgGo.GetComponent<RectTransform>();
@@ -119,15 +139,11 @@ namespace Moba.Editor
             bgImg.color = Color.white;
             bgImg.raycastTarget = false;
 
-            AspectRatioFitter arf = bgGo.GetComponent<AspectRatioFitter>();
-            arf.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-            arf.aspectRatio = 2752f / 1536f;
-
             MainMenuBackgroundFitter fitter = bgGo.GetComponent<MainMenuBackgroundFitter>();
             fitter.EnsureBackgroundLoaded();
             fitter.ApplyEnvelopeFit();
 
-            // 5. Dark Vignette / Atmospheric Gradient Overlay (营造深邃 MOBA 史诗氛围)
+            // 5. Dark Vignette Overlay
             GameObject overlayGo = new GameObject("Vignette_Overlay", typeof(RectTransform), typeof(UnityEngine.UI.Image));
             overlayGo.transform.SetParent(canvasGo.transform, false);
             RectTransform overlayRt = overlayGo.GetComponent<RectTransform>();
@@ -140,7 +156,20 @@ namespace Moba.Editor
             overlayImg.color = new Color(0.04f, 0.05f, 0.08f, 0.32f);
             overlayImg.raycastTarget = false;
 
-            // 6. Top Title (翼龙农药)
+            // 6. Click Particles Overlay (置于背景上方、按钮下方，绝不阻挡按钮交互)
+            GameObject clickFxGo = new GameObject("ClickEffect_Overlay", typeof(RectTransform), typeof(MainMenuClickEffect));
+            clickFxGo.transform.SetParent(canvasGo.transform, false);
+
+            RectTransform clickFxRt = clickFxGo.GetComponent<RectTransform>();
+            clickFxRt.anchorMin = Vector2.zero;
+            clickFxRt.anchorMax = Vector2.one;
+            clickFxRt.offsetMin = Vector2.zero;
+            clickFxRt.offsetMax = Vector2.zero;
+
+            MainMenuClickEffect clickFx = clickFxGo.GetComponent<MainMenuClickEffect>();
+            clickFx.SetSprites(ringSprite, null);
+
+            // 7. Top Title (翼龙农药)
             GameObject titleGo = new GameObject("Top_Title", typeof(RectTransform), typeof(UnityEngine.UI.Text), typeof(UnityEngine.UI.Outline), typeof(UnityEngine.UI.Shadow));
             titleGo.transform.SetParent(canvasGo.transform, false);
 
@@ -168,7 +197,7 @@ namespace Moba.Editor
             titleShadow.effectColor = new Color(0f, 0f, 0f, 0.88f);
             titleShadow.effectDistance = new Vector2(6f, -6f);
 
-            // 7. Center Start Game Button (居中文字开始游戏，无按钮框)
+            // 8. Center Start Game Button (居中文字开始游戏，无按钮框)
             GameObject startBtnGo = new GameObject("Center_StartGameButton", typeof(RectTransform), typeof(UnityEngine.UI.Button), typeof(UnityEngine.UI.Image), typeof(CanvasGroup));
             startBtnGo.transform.SetParent(canvasGo.transform, false);
 
@@ -177,10 +206,10 @@ namespace Moba.Editor
             startBtnRt.anchorMax = new Vector2(0.5f, 0.44f);
             startBtnRt.pivot = new Vector2(0.5f, 0.5f);
             startBtnRt.anchoredPosition = Vector2.zero;
-            startBtnRt.sizeDelta = new Vector2(520f, 120f);
+            startBtnRt.sizeDelta = new Vector2(540f, 140f);
 
             UnityEngine.UI.Image startBtnImg = startBtnGo.GetComponent<UnityEngine.UI.Image>();
-            startBtnImg.color = Color.clear; // 核心要求：不需要看到按钮框，完全透明无框
+            startBtnImg.color = new Color(1f, 1f, 1f, 0.001f); // 极低透明度保证百分百捕获点击，且人眼看不到任何边框
             startBtnImg.raycastTarget = true;
 
             UnityEngine.UI.Button startBtn = startBtnGo.GetComponent<UnityEngine.UI.Button>();
@@ -215,7 +244,7 @@ namespace Moba.Editor
             startTxtShadow.effectColor = new Color(0f, 0f, 0f, 0.82f);
             startTxtShadow.effectDistance = new Vector2(4f, -4f);
 
-            // 8. Loading Container & Golden-Orange Slider (点击后出现，无小圆圈⚪手柄)
+            // 9. Loading Container & Golden-Orange Slider (点击后出现，无小圆圈⚪手柄)
             GameObject loadingContainerGo = new GameObject("Loading_Container", typeof(RectTransform));
             loadingContainerGo.transform.SetParent(canvasGo.transform, false);
 
@@ -313,19 +342,6 @@ namespace Moba.Editor
 
             loadingContainerGo.SetActive(false); // 初始时隐藏
 
-            // 9. Click Particles & Ripple Overlay (全屏点击粒子效果)
-            GameObject clickFxGo = new GameObject("ClickEffect_Overlay", typeof(RectTransform), typeof(MainMenuClickEffect));
-            clickFxGo.transform.SetParent(canvasGo.transform, false);
-
-            RectTransform clickFxRt = clickFxGo.GetComponent<RectTransform>();
-            clickFxRt.anchorMin = Vector2.zero;
-            clickFxRt.anchorMax = Vector2.one;
-            clickFxRt.offsetMin = Vector2.zero;
-            clickFxRt.offsetMax = Vector2.zero;
-
-            MainMenuClickEffect clickFx = clickFxGo.GetComponent<MainMenuClickEffect>();
-            clickFx.SetSprites(ringSprite, null);
-
             // 10. MainMenuController (挂在 Canvas 上)
             MainMenuController controller = canvasGo.AddComponent<MainMenuController>();
             controller.BindComponents(
@@ -349,6 +365,7 @@ namespace Moba.Editor
             AssetDatabase.Refresh();
 
             EnsureBuildSettingsConfigured();
+            UnlockSceneViewCamera();
 
             Debug.Log($"[MobaMainMenuBuilder] 成功生成主界面场景: {MainScenePath} 并配置 Build Settings！");
         }

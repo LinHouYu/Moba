@@ -5,10 +5,9 @@ namespace Moba.Runtime.CameraSystem
 {
     /// <summary>
     /// Smooth top-down isometric MOBA camera follower.
-    /// Runs in LateUpdate to prevent jitter after character movement.
-    /// Auto-resolves target if not assigned in Inspector.
+    /// Runs strictly in Play mode LateUpdate to prevent jitter after character movement.
+    /// Never runs in Edit mode, preserving Scene View free camera WASD navigation.
     /// </summary>
-    [ExecuteAlways]
     [DisallowMultipleComponent]
     public class MobaCameraFollow : MonoBehaviour
     {
@@ -67,6 +66,8 @@ namespace Moba.Runtime.CameraSystem
 
         private void LateUpdate()
         {
+            if (!Application.isPlaying) return;
+
             if (target == null)
             {
                 EnsureTarget();
@@ -77,15 +78,7 @@ namespace Moba.Runtime.CameraSystem
             }
 
             Vector3 targetPosition = target.position + offset;
-            if (Application.isPlaying)
-            {
-                transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref currentVelocity, smoothTime);
-            }
-            else
-            {
-                // In Editor, snap directly so camera always aligns with target in Scene View
-                transform.position = targetPosition;
-            }
+            transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref currentVelocity, smoothTime);
             UpdateRotation();
         }
 

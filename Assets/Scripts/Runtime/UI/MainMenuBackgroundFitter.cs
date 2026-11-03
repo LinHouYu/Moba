@@ -8,7 +8,7 @@ namespace Moba.Runtime.UI
     /// 主界面背景自适应组件：
     /// 自动根据当前屏幕分辨率与图片原始尺寸（2752x1536），通过 Envelope 模式自适应拉伸铺满全屏，
     /// 彻底防止在任意比例屏幕（16:9, 18:9, 19.5:9, 20:9, 21:9 超宽屏, 4:3 平板）上出现黑边。
-    /// 同时支持直接读取 main.jfif 的原生保底加载。
+    /// 包含完备的防重入与变化阈值校验，彻底避免引发 UGUI 布局死循环卡死。
     /// </summary>
     [RequireComponent(typeof(RectTransform))]
     [DisallowMultipleComponent]
@@ -29,6 +29,7 @@ namespace Moba.Runtime.UI
         private RectTransform rectTransform;
         private Canvas rootCanvas;
         private Vector2 lastScreenSize = Vector2.zero;
+        private bool isApplyingFit = false;
 
         private void Awake()
         {
@@ -55,7 +56,15 @@ namespace Moba.Runtime.UI
 
         private void OnRectTransformDimensionsChange()
         {
-            ApplyEnvelopeFit();
+            // 防重入：尺寸变更时仅在屏幕/画布尺寸真实改变时触发，严禁无条件重设 sizeDelta
+            if (isApplyingFit) return;
+
+            Vector2 currentSize = new Vector2(Screen.width, Screen.height);
+            if (currentSize != lastScreenSize)
+            {
+                lastScreenSize = currentSize;
+                ApplyEnvelopeFit();
+            }
         }
 
         /// <summary>
@@ -130,40 +139,57 @@ namespace Moba.Runtime.UI
         }
 
         /// <summary>
-        /// 执行 Envelope Parent 全屏防黑边拉伸对齐。
+        /// 执行 Envelope Parent 全屏防黑边拉伸对齐（带防死循环重入保护）。
         /// </summary>
         public void ApplyEnvelopeFit()
         {
+            if (isApplyingFit) return;
+
             if (rectTransform == null) rectTransform = GetComponent<RectTransform>();
+            if (rectTransform == null) return;
 
-            // 锚点锁定在正中心 (0.5, 0.5)
-            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            rectTransform.anchoredPosition = Vector2.zero;
-
-            // 获取参考画布尺寸或屏幕像素尺寸
-            float viewWidth = Screen.width;
-            float viewHeight = Screen.height;
-
-            if (rootCanvas != null)
+            try
             {
-                var canvasRect = rootCanvas.GetComponent<RectTransform>();
-                if (canvasRect != null && canvasRect.rect.width > 0 && canvasRect.rect.height > 0)
+                isApplyingFit = true;
+
+                // 锚点锁定在正中心 (0.5, 0.5)
+                rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+                rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+                rectTransform.pivot = new Vector2(0.5f, 0.5f);
+                rectTransform.anchoredPosition = Vector2.zero;
+
+                if (rootCanvas == null) rootCanvas = GetComponentInParent<Canvas>();
+
+                float viewWidth = Screen.width;
+                float viewHeight = Screen.height;
+
+                if (rootCanvas != null)
                 {
-                    viewWidth = canvasRect.rect.width;
-                    viewHeight = canvasRect.rect.height;
+                    var canvasRect = rootCanvas.GetComponent<RectTransform>();
+                    if (canvasRect != null && canvasRect.rect.width > 0 && canvasRect.rect.height > 0)
+                    {
+                        viewWidth = canvasRect.rect.width;
+                        viewHeight = canvasRect.rect.height;
+                    }
+                }
+
+                Vector2 newSize = MainMenuLogic.CalculateBackgroundEnvelopeDimensions(
+                    viewWidth,
+                    viewHeight,
+                    originalWidth,
+                    originalHeight,
+                    safetyMargin);
+
+                // 仅在尺寸差值大于 0.5 像素时才进行实质性赋值，彻底阻断任何布局重算死循环
+                if (Vector2.Distance(rectTransform.sizeDelta, newSize) > 0.5f)
+                {
+                    rectTransform.sizeDelta = newSize;
                 }
             }
-
-            Vector2 newSize = MainMenuLogic.CalculateBackgroundEnvelopeDimensions(
-                viewWidth,
-                viewHeight,
-                originalWidth,
-                originalHeight,
-                safetyMargin);
-
-            rectTransform.sizeDelta = newSize;
+            finally
+            {
+                isApplyingFit = false;
+            }
         }
     }
 }

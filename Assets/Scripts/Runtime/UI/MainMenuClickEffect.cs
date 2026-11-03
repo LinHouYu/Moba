@@ -8,6 +8,7 @@ namespace Moba.Runtime.UI
     /// 主界面点击粒子与涟漪特效控制器：
     /// 在玩家点击屏幕或按下按钮时，在触控点生成金色偏橘色的扩散光环与散射星芒粒子，
     /// 提供纯正 MOBA 手感与视觉反馈。
+    /// 兼容 Unity 新旧输入系统，不阻挡底层按钮事件。
     /// </summary>
     [DisallowMultipleComponent]
     public class MainMenuClickEffect : MonoBehaviour, IPointerDownHandler
@@ -71,20 +72,31 @@ namespace Moba.Runtime.UI
 
         private void Update()
         {
-            // 检测全局输入（支持多点触控与鼠标左键）
+            // 兼容 Unity 6 新输入系统与移动端多点触控，避免调用过时 Input 导致抛出异常卡顿
+#if ENABLE_INPUT_SYSTEM
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+            {
+                SpawnClickEffect(mouse.position.ReadValue());
+            }
+
+            var touchScreen = UnityEngine.InputSystem.Touchscreen.current;
+            if (touchScreen != null)
+            {
+                foreach (var touch in touchScreen.touches)
+                {
+                    if (touch.press.wasPressedThisFrame)
+                    {
+                        SpawnClickEffect(touch.position.ReadValue());
+                    }
+                }
+            }
+#else
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
                 SpawnClickEffect(UnityEngine.Input.mousePosition);
             }
-
-            for (int i = 0; i < UnityEngine.Input.touchCount; i++)
-            {
-                var touch = UnityEngine.Input.GetTouch(i);
-                if (touch.phase == TouchPhase.Began)
-                {
-                    SpawnClickEffect(touch.position);
-                }
-            }
+#endif
 
             UpdateActiveParticles(Time.unscaledDeltaTime);
         }
