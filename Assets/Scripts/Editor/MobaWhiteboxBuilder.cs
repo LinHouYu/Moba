@@ -28,9 +28,15 @@ namespace Moba.Editor
         private const string HeadBarHpPath = "Assets/UI/NKGMoba/Sprites/HeadBar_HP.png";
         private const string HeadBarMpPath = "Assets/UI/NKGMoba/Sprites/HeadBar_MP.png";
         private const string IconAttackPath = "Assets/UI/NKGMoba/Sprites/Icon_Attack_Claw.png";
-        private const string IconSkill1Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill1_WindDive.png";
+        private const string IconSkill1Path = "Assets/Resources/skill1.jpg";
         private const string IconSkill2Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill2_ParryWhirl.png";
         private const string IconSkill3Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill3_Ultimate.png";
+
+        private const string HeroAttackAudioPath = "Assets/Audio/Hero_Attack.wav";
+        private const string HeroSkill1AudioPath = "Assets/Audio/Hero_Skill1_Dive.wav";
+        private const string HeroSkill2AudioPath = "Assets/Audio/Hero_Skill2_Parry.wav";
+        private const string HeroSkill3FlyAudioPath = "Assets/Audio/Hero_Skill3_Fly.wav";
+        private const string HeroSkill3SlamAudioPath = "Assets/Audio/Hero_Skill3_Slam.wav";
 
         [InitializeOnLoadMethod]
         private static void AutoCheckAndBuildScene()
@@ -69,8 +75,10 @@ namespace Moba.Editor
 
                 bool needsUpgrade = player == null
                     || player.transform.Find("Hero_Visual") == null
+                    || player.transform.Find("Hero_AttackRange_Circle") == null
                     || player.GetComponent<YunZhongJunSkillController>() == null
                     || dummy == null
+                    || dummy.transform.Find("Target_Lock_Reticle") == null
                     || dummy.GetComponent<MobaTargetDummy>() == null
                     || GameObject.Find("Whitebox_Ground") == null
                     || GameObject.Find("Intimidation_Ring_Group") == null
@@ -171,7 +179,7 @@ namespace Moba.Editor
             GameObject player = BuildOrUpgradePlayer(ringSprite, barBgSprite, barHpSprite, barMpSprite, circleSprite, uiFont);
 
             // 4. Stationary Non-AI Target Dummy (静止无AI假人，置于云中君正前方便于直接测试)
-            BuildOrUpgradeTargetDummy(barBgSprite, barHpSprite, circleSprite, uiFont);
+            BuildOrUpgradeTargetDummy(ringSprite, barBgSprite, barHpSprite, circleSprite, uiFont);
 
             // 5. UI Canvas (保留左下虚拟摇杆 + 右下云中君全套技能与普攻/补刀/推塔虚拟按键，不含回城/回血/加速召唤师技能)
             var joystickInput = player.GetComponent<MobaJoystickInput>();
@@ -207,7 +215,11 @@ namespace Moba.Editor
                 camData.allowHDROutput = false;
             }
 
-            var follow = cam.GetComponent<MobaCameraFollow>() ?? cam.gameObject.AddComponent<MobaCameraFollow>();
+            var follow = cam.GetComponent<MobaCameraFollow>();
+            if (follow == null)
+            {
+                follow = cam.gameObject.AddComponent<MobaCameraFollow>();
+            }
             follow.Target = player.transform;
             follow.Offset = new Vector3(0f, 15f, -11.5f);
             cam.transform.position = player.transform.position + follow.Offset;
@@ -288,14 +300,23 @@ namespace Moba.Editor
             player.transform.position = Vector3.zero;
             player.transform.rotation = Quaternion.identity;
 
-            var joystickInput = player.GetComponent<MobaJoystickInput>() ?? player.AddComponent<MobaJoystickInput>();
-            var heroMovement = player.GetComponent<MobaHeroMovement>() ?? player.AddComponent<MobaHeroMovement>();
+            var joystickInput = player.GetComponent<MobaJoystickInput>();
+            if (joystickInput == null)
+            {
+                joystickInput = player.AddComponent<MobaJoystickInput>();
+            }
+            var heroMovement = player.GetComponent<MobaHeroMovement>();
+            if (heroMovement == null)
+            {
+                heroMovement = player.AddComponent<MobaHeroMovement>();
+            }
             heroMovement.SetInputProvider(joystickInput);
 
             // Clean old effect children before rebuilding fresh references
             DestroyIfExists(player.transform, "Skill2_ParryAura");
             DestroyIfExists(player.transform, "Ultimate_Circles_Group");
             DestroyIfExists(player.transform, "Player_HeadBar");
+            DestroyIfExists(player.transform, "Hero_AttackRange_Circle");
 
             var existingIntimidation = GameObject.Find("Intimidation_Ring_Group");
             if (existingIntimidation != null) Object.DestroyImmediate(existingIntimidation);
@@ -374,7 +395,35 @@ namespace Moba.Editor
                 out UnityEngine.UI.Image breathFill,
                 out UnityEngine.UI.Text badgeText);
 
-            var skillCtrl = player.GetComponent<YunZhongJunSkillController>() ?? player.AddComponent<YunZhongJunSkillController>();
+            // F. 仿王者荣耀攻击范围地面指示金圈（未攻击时隐藏，攻击/战斗时显示，随形态射程动态缩放）
+            Transform attackRangeCircle = CreateGroundRingSprite(
+                "Hero_AttackRange_Circle",
+                player.transform,
+                ringSprite,
+                new Color(1f, 0.85f, 0.25f, 0.90f),
+                diameter: 6.8f,
+                sortingOrder: 5);
+            attackRangeCircle.gameObject.SetActive(false);
+
+            // G. 角色音频组件与各技能/普攻音效加载绑定
+            var audioSrc = player.GetComponent<AudioSource>();
+            if (audioSrc == null)
+            {
+                audioSrc = player.AddComponent<AudioSource>();
+            }
+            audioSrc.playOnAwake = false;
+
+            AudioClip attackClip = AssetDatabase.LoadAssetAtPath<AudioClip>(HeroAttackAudioPath);
+            AudioClip s1Clip = AssetDatabase.LoadAssetAtPath<AudioClip>(HeroSkill1AudioPath);
+            AudioClip s2Clip = AssetDatabase.LoadAssetAtPath<AudioClip>(HeroSkill2AudioPath);
+            AudioClip ultFlyClip = AssetDatabase.LoadAssetAtPath<AudioClip>(HeroSkill3FlyAudioPath);
+            AudioClip ultSlamClip = AssetDatabase.LoadAssetAtPath<AudioClip>(HeroSkill3SlamAudioPath);
+
+            var skillCtrl = player.GetComponent<YunZhongJunSkillController>();
+            if (skillCtrl == null)
+            {
+                skillCtrl = player.AddComponent<YunZhongJunSkillController>();
+            }
             skillCtrl.BindVisualAndUIReferences(
                 intimidationGroup.transform,
                 redInnerRing,
@@ -391,10 +440,20 @@ namespace Moba.Editor
                 badgeText,
                 uiFont);
 
+            skillCtrl.BindAudioAndAttackRangeReferences(
+                attackRangeCircle,
+                audioSrc,
+                attackClip,
+                s1Clip,
+                s2Clip,
+                ultFlyClip,
+                ultSlamClip);
+
             return player;
         }
 
         private static void BuildOrUpgradeTargetDummy(
+            Sprite ringSprite,
             Sprite barBgSprite,
             Sprite barHpSprite,
             Sprite circleSprite,
@@ -421,7 +480,17 @@ namespace Moba.Editor
             visual.transform.localPosition = new Vector3(0f, 1f, 0f);
             var vCol = visual.GetComponent<Collider>();
             if (vCol != null) Object.DestroyImmediate(vCol);
-            AssignSavedLitMaterial(visual.GetComponent<MeshRenderer>(), "Assets/Materials/Dummy_Material.mat", new Color(0.88f, 0.24f, 0.26f));
+            AssignTargetLockMaterial(visual.GetComponent<MeshRenderer>(), "Assets/Materials/Dummy_Material.mat", new Color(0.88f, 0.24f, 0.26f));
+
+            // Ground Target Lock Reticle (外层红色/攻击范围内黄色偏橘色锁定指示环)
+            Transform lockReticle = CreateGroundRingSprite(
+                "Target_Lock_Reticle",
+                dummy.transform,
+                ringSprite,
+                new Color(1f, 0.18f, 0.18f, 0.95f),
+                diameter: 2.2f,
+                sortingOrder: 6);
+            lockReticle.localPosition = new Vector3(0f, 0.04f, 0f);
 
             // Base pedestal so stationary dummy looks clearly anchored
             GameObject basePlate = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -447,6 +516,7 @@ namespace Moba.Editor
 
             var dummyComp = dummy.AddComponent<MobaTargetDummy>();
             dummyComp.BindUIReferences(visual.transform, headBar, hpFill, hpLabel, stateLabel, pips, uiFont);
+            dummyComp.BindLockVisualReferences(visual.GetComponent<MeshRenderer>(), lockReticle, lockReticle.GetComponent<SpriteRenderer>());
         }
 
         private static GameObject BuildFeatherRainParticleSystem(Sprite particleSprite)
@@ -531,35 +601,48 @@ namespace Moba.Editor
         {
             GameObject canvasGo = new GameObject("Player_HeadBar", typeof(RectTransform), typeof(Canvas));
             canvasGo.transform.SetParent(parent, false);
-            canvasGo.transform.localPosition = new Vector3(0f, 2.7f, 0f);
-            canvasGo.transform.localScale = new Vector3(0.009f, 0.009f, 0.009f);
+            canvasGo.transform.localPosition = new Vector3(0f, 2.9f, 0f);
+            canvasGo.transform.localRotation = Quaternion.Euler(50f, 0f, 0f);
+            canvasGo.transform.localScale = new Vector3(0.0135f, 0.0135f, 0.0135f);
 
             var canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.sortingOrder = 20;
 
             RectTransform rootRect = canvasGo.GetComponent<RectTransform>();
-            rootRect.sizeDelta = new Vector2(280f, 84f);
+            rootRect.sizeDelta = new Vector2(340f, 100f);
 
             // State Text on Top
-            badgeText = CreateLabel("State_Text", canvasGo.transform, uiFont, "云中君 [飞鸡(展翅)] 气息:100/100", 20, new Vector2(0f, 28f), new Vector2(420f, 30f), new Color(0.75f, 0.96f, 1f));
+            badgeText = CreateLabel("State_Text", canvasGo.transform, uiFont, "云中君 [飞鸡(展翅)] 气息:100/100", 20, new Vector2(0f, 34f), new Vector2(460f, 32f), new Color(0.75f, 0.96f, 1f));
 
-            // Bar Container
-            GameObject barBgObj = CreateUIImage("Bar_Bg", canvasGo.transform, bgSprite, new Color(0.08f, 0.1f, 0.14f, 0.9f), new Vector2(8f, -2f), new Vector2(200f, 28f));
+            // Bar Container (王者荣耀加粗外框风格)
+            GameObject barBgObj = CreateUIImage("Bar_Bg", canvasGo.transform, bgSprite, new Color(0.05f, 0.06f, 0.08f, 0.95f), new Vector2(10f, -2f), new Vector2(260f, 36f));
 
-            // Green HP Fill
-            GameObject hpObj = CreateUIImage("HP_Fill", barBgObj.transform, hpSprite, new Color(0.24f, 0.9f, 0.36f, 1f), new Vector2(0f, 5f), new Vector2(194f, 14f));
+            // Green HP Fill (加粗明亮绿条)
+            GameObject hpObj = CreateUIImage("HP_Fill", barBgObj.transform, hpSprite, new Color(0.18f, 0.88f, 0.32f, 1f), new Vector2(0f, 6f), new Vector2(254f, 20f));
             hpFill = hpObj.GetComponent<UnityEngine.UI.Image>();
             ConfigureFilledHorizontal(hpFill);
 
-            // Breath (气息) Fill underneath HP
-            GameObject breathObj = CreateUIImage("Breath_Fill", barBgObj.transform, mpSprite, new Color(0.25f, 0.92f, 1f, 1f), new Vector2(0f, -7.5f), new Vector2(194f, 8f));
+            // 仿王者荣耀血条格：每 1000 生命值一格竖直分割线
+            float maxHeroHp = 6200f;
+            int heroTicks = Mathf.FloorToInt(maxHeroHp / 1000f);
+            for (int i = 1; i <= heroTicks; i++)
+            {
+                float frac = (i * 1000f) / maxHeroHp;
+                float xPos = -127f + frac * 254f;
+                GameObject tickGo = CreateUIImage($"HpTick_{i}", barBgObj.transform, null, new Color(0.04f, 0.06f, 0.08f, 0.92f), new Vector2(xPos, 6f), new Vector2(2f, 20f));
+                tickGo.GetComponent<UnityEngine.UI.Image>().raycastTarget = false;
+            }
+
+            // Breath (气息) Fill underneath HP (金橘色气息条)
+            GameObject breathObj = CreateUIImage("Breath_Fill", barBgObj.transform, mpSprite, new Color(0.98f, 0.68f, 0.12f, 1f), new Vector2(0f, -9.5f), new Vector2(254f, 10f));
             breathFill = breathObj.GetComponent<UnityEngine.UI.Image>();
             ConfigureFilledHorizontal(breathFill);
 
             // Level 15 Circle Badge on Left (matching HoK screenshot)
-            GameObject lvlBadge = CreateUIImage("Level_Badge", canvasGo.transform, circleSprite, new Color(0.1f, 0.12f, 0.16f, 0.95f), new Vector2(-102f, -2f), new Vector2(36f, 36f));
-            CreateLabel("Level_Text", lvlBadge.transform, uiFont, "15", 18, Vector2.zero, new Vector2(36f, 36f), new Color(1f, 0.9f, 0.45f));
+            GameObject lvlBadge = CreateUIImage("Level_Badge", canvasGo.transform, circleSprite, new Color(0.08f, 0.10f, 0.14f, 0.98f), new Vector2(-132f, -2f), new Vector2(42f, 42f));
+            CreateUIImage("Level_Badge_Ring", lvlBadge.transform, null, new Color(0.85f, 0.72f, 0.38f, 0.95f), Vector2.zero, new Vector2(42f, 42f));
+            CreateLabel("Level_Text", lvlBadge.transform, uiFont, "15", 20, Vector2.zero, new Vector2(42f, 42f), new Color(1f, 0.92f, 0.48f));
 
             return canvasGo.transform;
         }
@@ -577,40 +660,51 @@ namespace Moba.Editor
         {
             GameObject canvasGo = new GameObject("Dummy_HeadBar", typeof(RectTransform), typeof(Canvas));
             canvasGo.transform.SetParent(parent, false);
-            canvasGo.transform.localPosition = new Vector3(0f, 2.75f, 0f);
-            canvasGo.transform.localScale = new Vector3(0.009f, 0.009f, 0.009f);
+            canvasGo.transform.localPosition = new Vector3(0f, 2.95f, 0f);
+            canvasGo.transform.localRotation = Quaternion.Euler(50f, 0f, 0f);
+            canvasGo.transform.localScale = new Vector3(0.0135f, 0.0135f, 0.0135f);
 
             var canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
             canvas.sortingOrder = 21;
 
             RectTransform rootRect = canvasGo.GetComponent<RectTransform>();
-            rootRect.sizeDelta = new Vector2(300f, 100f);
+            rootRect.sizeDelta = new Vector2(340f, 110f);
 
-            stateLabel = CreateLabel("Dummy_Status", canvasGo.transform, uiFont, "静止靶假人 (无AI)", 20, new Vector2(0f, 44f), new Vector2(440f, 30f), new Color(0.9f, 0.92f, 0.95f));
+            stateLabel = CreateLabel("Dummy_Status", canvasGo.transform, uiFont, "静止靶假人 (无AI)", 20, new Vector2(0f, 52f), new Vector2(460f, 32f), new Color(0.92f, 0.94f, 0.98f));
 
             // 5 Claw Mark Pips (抓击印记 1~5 层指示槽)
             GameObject pipRow = new GameObject("ClawMark_Pips", typeof(RectTransform));
             pipRow.transform.SetParent(canvasGo.transform, false);
             RectTransform pipRowRt = pipRow.GetComponent<RectTransform>();
-            pipRowRt.anchoredPosition = new Vector2(0f, 18f);
-            pipRowRt.sizeDelta = new Vector2(180f, 22f);
+            pipRowRt.anchoredPosition = new Vector2(0f, 24f);
+            pipRowRt.sizeDelta = new Vector2(200f, 26f);
 
             pips = new UnityEngine.UI.Image[5];
             for (int i = 0; i < 5; i++)
             {
-                float x = (i - 2) * 32f;
-                GameObject pipObj = CreateUIImage($"MarkPip_{i + 1}", pipRow.transform, circleSprite, new Color(0.2f, 0.22f, 0.26f, 0.75f), new Vector2(x, 0f), new Vector2(22f, 22f));
+                float x = (i - 2) * 36f;
+                GameObject pipObj = CreateUIImage($"MarkPip_{i + 1}", pipRow.transform, circleSprite, new Color(0.18f, 0.20f, 0.25f, 0.85f), new Vector2(x, 0f), new Vector2(26f, 26f));
                 pips[i] = pipObj.GetComponent<UnityEngine.UI.Image>();
             }
 
-            // Red HP Bar
-            GameObject barBgObj = CreateUIImage("Dummy_Bar_Bg", canvasGo.transform, bgSprite, new Color(0.08f, 0.08f, 0.1f, 0.92f), new Vector2(0f, -8f), new Vector2(220f, 24f));
-            GameObject hpObj = CreateUIImage("Dummy_HP_Fill", barBgObj.transform, hpSprite, new Color(0.92f, 0.22f, 0.22f, 1f), Vector2.zero, new Vector2(214f, 18f));
+            // Red HP Bar (加粗血条 + 仿王者荣耀 1000 HP 分割线)
+            GameObject barBgObj = CreateUIImage("Dummy_Bar_Bg", canvasGo.transform, bgSprite, new Color(0.06f, 0.06f, 0.08f, 0.95f), new Vector2(0f, -8f), new Vector2(260f, 30f));
+            GameObject hpObj = CreateUIImage("Dummy_HP_Fill", barBgObj.transform, hpSprite, new Color(0.92f, 0.20f, 0.20f, 1f), Vector2.zero, new Vector2(254f, 24f));
             hpFill = hpObj.GetComponent<UnityEngine.UI.Image>();
             ConfigureFilledHorizontal(hpFill);
 
-            hpLabel = CreateLabel("Dummy_HP_Text", barBgObj.transform, uiFont, "训练假人  6000/6000", 15, Vector2.zero, new Vector2(220f, 24f), Color.white);
+            float maxDummyHp = 6000f;
+            int dummyTicks = Mathf.FloorToInt(maxDummyHp / 1000f);
+            for (int i = 1; i <= dummyTicks; i++)
+            {
+                float frac = (i * 1000f) / maxDummyHp;
+                float xPos = -127f + frac * 254f;
+                GameObject tickGo = CreateUIImage($"DummyHpTick_{i}", barBgObj.transform, null, new Color(0.05f, 0.02f, 0.02f, 0.92f), new Vector2(xPos, 0f), new Vector2(2f, 24f));
+                tickGo.GetComponent<UnityEngine.UI.Image>().raycastTarget = false;
+            }
+
+            hpLabel = CreateLabel("Dummy_HP_Text", barBgObj.transform, uiFont, "训练假人  6000/6000", 16, Vector2.zero, new Vector2(250f, 28f), Color.white);
 
             return canvasGo.transform;
         }
@@ -654,12 +748,12 @@ namespace Moba.Editor
 #endif
             }
 
-            // 1. 左下角：虚拟摇杆（严格限制在左半屏 0~0.46，避免与右侧攻击/技能触控冲突）
+            // 1. 左下角：虚拟摇杆（严格限制在左半屏 0~0.48，加大尺寸方便手机触控）
             GameObject touchZoneObj = new GameObject("Joystick_TouchZone", typeof(RectTransform));
             touchZoneObj.transform.SetParent(canvasObj.transform, false);
             RectTransform touchZoneRect = touchZoneObj.GetComponent<RectTransform>();
             touchZoneRect.anchorMin = new Vector2(0f, 0f);
-            touchZoneRect.anchorMax = new Vector2(0.46f, 0.82f);
+            touchZoneRect.anchorMax = new Vector2(0.48f, 0.85f);
             touchZoneRect.pivot = new Vector2(0f, 0f);
             touchZoneRect.offsetMin = Vector2.zero;
             touchZoneRect.offsetMax = Vector2.zero;
@@ -674,8 +768,8 @@ namespace Moba.Editor
             bgRect.anchorMin = new Vector2(0f, 0f);
             bgRect.anchorMax = new Vector2(0f, 0f);
             bgRect.pivot = new Vector2(0.5f, 0.5f);
-            bgRect.anchoredPosition = new Vector2(235f, 225f);
-            bgRect.sizeDelta = new Vector2(220f, 220f);
+            bgRect.anchoredPosition = new Vector2(265f, 255f);
+            bgRect.sizeDelta = new Vector2(320f, 320f);
 
             var bgImg = bgObj.AddComponent<UnityEngine.UI.Image>();
             bgImg.sprite = circleSprite;
@@ -686,7 +780,7 @@ namespace Moba.Editor
             bgCanvasGroup.alpha = 0.72f;
 
             // Outer decorative ring on joystick
-            CreateUIImage("Joystick_Ring", bgObj.transform, ringSprite, new Color(0.55f, 0.78f, 1f, 0.55f), Vector2.zero, new Vector2(220f, 220f));
+            CreateUIImage("Joystick_Ring", bgObj.transform, ringSprite, new Color(0.55f, 0.78f, 1f, 0.55f), Vector2.zero, new Vector2(320f, 320f));
 
             GameObject handleObj = new GameObject("Joystick_Handle", typeof(RectTransform));
             handleObj.transform.SetParent(bgObj.transform, false);
@@ -695,7 +789,7 @@ namespace Moba.Editor
             handleRect.anchorMax = new Vector2(0.5f, 0.5f);
             handleRect.pivot = new Vector2(0.5f, 0.5f);
             handleRect.anchoredPosition = Vector2.zero;
-            handleRect.sizeDelta = new Vector2(88f, 88f);
+            handleRect.sizeDelta = new Vector2(126f, 126f);
 
             var handleImg = handleObj.AddComponent<UnityEngine.UI.Image>();
             handleImg.sprite = circleSprite;
@@ -703,10 +797,11 @@ namespace Moba.Editor
             handleImg.raycastTarget = false;
 
             var joystickUI = touchZoneObj.AddComponent<MobaVirtualJoystickUI>();
+            joystickUI.HandleRange = 135f;
             joystickUI.SetReferences(bgRect, handleRect, bgCanvasGroup);
             joystickInput.BindVirtualJoystick(joystickUI);
 
-            // 2. 右下角：角色专属攻击与技能虚拟按键组（锚定右下角 (1,0)，适配全面屏手机，不含回城/恢复/加速召唤师技能）
+            // 2. 右下角：角色专属攻击与技能虚拟按键组（加大按键尺寸，适配全面屏手机与拇指触控）
             GameObject actionRoot = new GameObject("ActionButtons_Root", typeof(RectTransform));
             actionRoot.transform.SetParent(canvasObj.transform, false);
             RectTransform actionRt = actionRoot.GetComponent<RectTransform>();
@@ -714,14 +809,14 @@ namespace Moba.Editor
             actionRt.anchorMax = new Vector2(1f, 0f);
             actionRt.pivot = new Vector2(1f, 0f);
             actionRt.anchoredPosition = Vector2.zero;
-            actionRt.sizeDelta = new Vector2(620f, 540f);
+            actionRt.sizeDelta = new Vector2(740f, 640f);
 
-            // 普攻主按钮 + 补刀 + 推塔
+            // 普攻主按钮 + 补刀 + 推塔（尺寸大幅加大，按键视觉饱满清晰）
             var btnBasicAttack = CreateActionCircleButton(
                 "Btn_BasicAttack",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-165f, 145f),
-                size: 168f,
+                anchoredPos: new Vector2(-175f, 160f),
+                size: 216f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconAttack,
@@ -729,13 +824,13 @@ namespace Moba.Editor
                 ringColor: new Color(0.88f, 0.78f, 0.45f, 0.95f),
                 tagText: "普攻",
                 uiFont: uiFont,
-                tagFontSize: 22);
+                tagFontSize: 26);
 
             var btnLastHit = CreateActionCircleButton(
                 "Btn_LastHit",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-315f, 72f),
-                size: 84f,
+                anchoredPos: new Vector2(-360f, 85f),
+                size: 112f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: null,
@@ -743,14 +838,14 @@ namespace Moba.Editor
                 ringColor: new Color(0.65f, 0.8f, 0.95f, 0.85f),
                 tagText: "补刀",
                 uiFont: uiFont,
-                tagFontSize: 18,
+                tagFontSize: 22,
                 centerTag: true);
 
             var btnPushTower = CreateActionCircleButton(
                 "Btn_PushTower",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-82f, 295f),
-                size: 84f,
+                anchoredPos: new Vector2(-95f, 370f),
+                size: 112f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: null,
@@ -758,15 +853,15 @@ namespace Moba.Editor
                 ringColor: new Color(0.65f, 0.8f, 0.95f, 0.85f),
                 tagText: "推塔",
                 uiFont: uiFont,
-                tagFontSize: 18,
+                tagFontSize: 22,
                 centerTag: true);
 
-            // 一技能：天隙鸣（标签：加速，附走地鸡禁用遮罩）
+            // 一技能：天隙鸣（标签：加速，设定为 skill1.jpg，严格裁剪为圆形，内部撑满）
             var btnSkill1 = CreateSkillCircleButton(
                 "Btn_Skill1",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-435f, 118f),
-                size: 122f,
+                anchoredPos: new Vector2(-515f, 135f),
+                size: 154f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill1,
@@ -783,8 +878,8 @@ namespace Moba.Editor
             var btnSkill2 = CreateSkillCircleButton(
                 "Btn_Skill2",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-348f, 286f),
-                size: 122f,
+                anchoredPos: new Vector2(-405f, 315f),
+                size: 154f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill2,
@@ -796,12 +891,12 @@ namespace Moba.Editor
                 out _,
                 createLockOverlay: false);
 
-            // 三技能大招：风雷引（标签：伤害）
+            // 三技能大招：风雷引（标签：伤害，冲天砸地加手机震动）
             var btnSkill3 = CreateSkillCircleButton(
                 "Btn_Skill3",
                 actionRoot.transform,
-                anchoredPos: new Vector2(-190f, 412f),
-                size: 128f,
+                anchoredPos: new Vector2(-225f, 480f),
+                size: 164f,
                 circleSprite: circleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill3,
@@ -864,7 +959,36 @@ namespace Moba.Editor
 
             if (iconSprite != null)
             {
-                CreateUIImage("Icon", go.transform, iconSprite, new Color(0.95f, 0.96f, 1f, 0.92f), Vector2.zero, new Vector2(size * 0.62f, size * 0.62f));
+                GameObject maskGo = new GameObject("Action_Icon_Mask", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Mask));
+                maskGo.transform.SetParent(go.transform, false);
+                RectTransform maskRt = maskGo.GetComponent<RectTransform>();
+                maskRt.anchorMin = new Vector2(0.5f, 0.5f);
+                maskRt.anchorMax = new Vector2(0.5f, 0.5f);
+                maskRt.pivot = new Vector2(0.5f, 0.5f);
+                maskRt.anchoredPosition = Vector2.zero;
+                float innerSize = size * 0.84f;
+                maskRt.sizeDelta = new Vector2(innerSize, innerSize);
+
+                var maskImg = maskGo.GetComponent<UnityEngine.UI.Image>();
+                maskImg.sprite = circleSprite;
+                maskImg.raycastTarget = false;
+
+                var maskComp = maskGo.GetComponent<UnityEngine.UI.Mask>();
+                maskComp.showMaskGraphic = false;
+
+                GameObject iconGo = new GameObject("Icon", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+                iconGo.transform.SetParent(maskGo.transform, false);
+                RectTransform iconRt = iconGo.GetComponent<RectTransform>();
+                iconRt.anchorMin = Vector2.zero;
+                iconRt.anchorMax = Vector2.one;
+                iconRt.offsetMin = Vector2.zero;
+                iconRt.offsetMax = Vector2.zero;
+
+                var iconImg = iconGo.GetComponent<UnityEngine.UI.Image>();
+                iconImg.sprite = iconSprite;
+                iconImg.color = new Color(0.95f, 0.96f, 1f, 0.92f);
+                iconImg.preserveAspect = false;
+                iconImg.raycastTarget = false;
             }
 
             CreateUIImage("Border_Ring", go.transform, ringSprite, ringColor, Vector2.zero, new Vector2(size, size));
@@ -909,7 +1033,37 @@ namespace Moba.Editor
 
             if (iconSprite != null)
             {
-                CreateUIImage("Skill_Icon", go.transform, iconSprite, Color.white, Vector2.zero, new Vector2(size * 0.72f, size * 0.72f));
+                // 核心需求：圆形 Mask 裁剪容器，确保无论 JPEG 或方形图片，都严格裁成圆形不留方角与黑边，且刚好拉伸撑满内部圆圈
+                GameObject maskGo = new GameObject("Icon_Mask_Container", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Mask));
+                maskGo.transform.SetParent(go.transform, false);
+                RectTransform maskRt = maskGo.GetComponent<RectTransform>();
+                maskRt.anchorMin = new Vector2(0.5f, 0.5f);
+                maskRt.anchorMax = new Vector2(0.5f, 0.5f);
+                maskRt.pivot = new Vector2(0.5f, 0.5f);
+                maskRt.anchoredPosition = Vector2.zero;
+                float innerSize = size * 0.86f;
+                maskRt.sizeDelta = new Vector2(innerSize, innerSize);
+
+                var maskImg = maskGo.GetComponent<UnityEngine.UI.Image>();
+                maskImg.sprite = circleSprite;
+                maskImg.raycastTarget = false;
+
+                var maskComp = maskGo.GetComponent<UnityEngine.UI.Mask>();
+                maskComp.showMaskGraphic = false;
+
+                GameObject iconGo = new GameObject("Skill_Icon", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+                iconGo.transform.SetParent(maskGo.transform, false);
+                RectTransform iconRt = iconGo.GetComponent<RectTransform>();
+                iconRt.anchorMin = Vector2.zero;
+                iconRt.anchorMax = Vector2.one;
+                iconRt.offsetMin = Vector2.zero;
+                iconRt.offsetMax = Vector2.zero;
+
+                var iconImg = iconGo.GetComponent<UnityEngine.UI.Image>();
+                iconImg.sprite = iconSprite;
+                iconImg.color = Color.white;
+                iconImg.preserveAspect = false; // 紧贴撑满内部圆形，不留黑边或边缘
+                iconImg.raycastTarget = false;
             }
 
             CreateUIImage("Gold_Border", go.transform, ringSprite, new Color(0.95f, 0.82f, 0.42f, 0.95f), Vector2.zero, new Vector2(size, size));
@@ -1075,6 +1229,32 @@ namespace Moba.Editor
             {
                 mat.color = color;
                 if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+                EditorUtility.SetDirty(mat);
+            }
+            renderer.sharedMaterial = mat;
+        }
+
+        private static void AssignTargetLockMaterial(MeshRenderer renderer, string assetPath, Color baseColor)
+        {
+            if (renderer == null) return;
+            Material mat = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+            Shader lockShader = Shader.Find("Moba/TargetLock") ?? Shader.Find("Universal Render Pipeline/Lit");
+            if (mat == null)
+            {
+                mat = new Material(lockShader);
+                mat.SetColor("_BaseColor", baseColor);
+                mat.SetColor("_OutlineColor", new Color(1f, 0.18f, 0.18f, 1f));
+                mat.SetFloat("_OutlineWidth", 0.045f);
+                mat.SetFloat("_RimIntensity", 1.2f);
+                AssetDatabase.CreateAsset(mat, assetPath);
+            }
+            else
+            {
+                if (mat.shader != lockShader && lockShader != null) mat.shader = lockShader;
+                mat.SetColor("_BaseColor", baseColor);
+                mat.SetColor("_OutlineColor", new Color(1f, 0.18f, 0.18f, 1f));
+                mat.SetFloat("_OutlineWidth", 0.045f);
+                mat.SetFloat("_RimIntensity", 1.2f);
                 EditorUtility.SetDirty(mat);
             }
             renderer.sharedMaterial = mat;

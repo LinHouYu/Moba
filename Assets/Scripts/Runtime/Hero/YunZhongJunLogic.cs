@@ -30,6 +30,37 @@ namespace Moba.Runtime.Hero
         public const float DescribedSkill1StunDuration = 0.5f;
         public const float LegacyBugActualSkill1StunDuration = 1.0f;
 
+        public static readonly Color TargetLockRedColor = new Color(1f, 0.18f, 0.18f, 1f);
+        public static readonly Color TargetLockGoldenOrangeColor = new Color(1f, 0.62f, 0.08f, 1f);
+
+        /// <summary>
+        /// 判断目标是否处于云中君当前普攻射程之内（忽略Y轴高度，按地面平面距离计算）。
+        /// </summary>
+        public static bool IsTargetInAttackRange(Vector3 heroPos, Vector3 targetPos, float attackRange)
+        {
+            if (attackRange <= 0f) return false;
+            float dx = heroPos.x - targetPos.x;
+            float dz = heroPos.z - targetPos.z;
+            return (dx * dx + dz * dz) <= (attackRange * attackRange);
+        }
+
+        /// <summary>
+        /// 仿王者荣耀攻击范围显示规则：未攻击时隐藏攻击范围，攻击时或战斗中显示攻击范围。
+        /// </summary>
+        public static bool ShouldShowAttackRangeIndicator(float combatRemaining, float attackCdRemaining, bool isAttacking = false)
+        {
+            return isAttacking || combatRemaining > 0f || attackCdRemaining > 0f;
+        }
+
+        /// <summary>
+        /// 目标锁定外层 Shader / 指示器颜色判定：
+        /// 攻击范围内为金色偏橘色让玩家知晓可以攻击；攻击范围外为红色锁定。
+        /// </summary>
+        public static Color GetTargetLockOutlineColor(bool isInAttackRange)
+        {
+            return isInAttackRange ? TargetLockGoldenOrangeColor : TargetLockRedColor;
+        }
+
         /// <summary>
         /// 旧版云中君一技能眩晕时间计算：
         /// 技能描述写明眩晕 0.5 秒，开启保留旧版 BUG 时实际眩晕 1.0 秒（足足多一倍）。

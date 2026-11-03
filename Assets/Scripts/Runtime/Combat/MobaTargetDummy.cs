@@ -32,12 +32,23 @@ namespace Moba.Runtime.Combat
 
         [Header("Visual & UI References")]
         [SerializeField] private Transform visualTransform;
+        [SerializeField] private MeshRenderer visualMeshRenderer;
+        [SerializeField] private Transform lockReticleTransform;
+        [SerializeField] private SpriteRenderer lockReticleSpriteRenderer;
         [SerializeField] private Transform headBarRoot;
         [SerializeField] private UnityEngine.UI.Image hpFillImage;
         [SerializeField] private UnityEngine.UI.Text hpText;
         [SerializeField] private UnityEngine.UI.Text statusText;
         [SerializeField] private UnityEngine.UI.Image[] clawPipImages = new UnityEngine.UI.Image[5];
         [SerializeField] private Font popupFont;
+
+        [Header("Target Lock Shader State")]
+        [SerializeField] private bool isTargetLocked = false;
+        [SerializeField] private bool isTargetInAttackRange = false;
+
+        private MaterialPropertyBlock lockPropertyBlock;
+        private static readonly int OutlineColorProp = Shader.PropertyToID("_OutlineColor");
+        private static readonly int RimIntensityProp = Shader.PropertyToID("_RimIntensity");
 
         [Header("Live Debug (Read-Only)")]
         [SerializeField] private int debugClawStacks = 0;
@@ -83,12 +94,51 @@ namespace Moba.Runtime.Combat
             Font uiFont)
         {
             visualTransform = visual;
+            visualMeshRenderer = visual != null ? visual.GetComponent<MeshRenderer>() : null;
             headBarRoot = headBar;
             hpFillImage = hpFill;
             hpText = hpLabel;
             statusText = stateLabel;
             clawPipImages = pips;
             popupFont = uiFont;
+        }
+
+        public void BindLockVisualReferences(MeshRenderer meshRenderer, Transform reticle, SpriteRenderer reticleSr)
+        {
+            visualMeshRenderer = meshRenderer;
+            lockReticleTransform = reticle;
+            lockReticleSpriteRenderer = reticleSr;
+        }
+
+        /// <summary>
+        /// 目标锁定外层 Shader 与地面锁定环响应：
+        /// 攻击范围外呈现外层红色 Shader / 环；
+        /// 进入云中君普攻攻击范围内则变为黄色偏橘色，告知玩家已锁定并可实施打击。
+        /// </summary>
+        public void SetLockVisual(bool isLocked, bool isInAttackRange)
+        {
+            isTargetLocked = isLocked;
+            isTargetInAttackRange = isInAttackRange;
+
+            Color lockCol = YunZhongJunLogic.GetTargetLockOutlineColor(isInAttackRange);
+
+            if (visualMeshRenderer != null)
+            {
+                if (lockPropertyBlock == null) lockPropertyBlock = new MaterialPropertyBlock();
+                visualMeshRenderer.GetPropertyBlock(lockPropertyBlock);
+                lockPropertyBlock.SetColor(OutlineColorProp, isLocked ? lockCol : new Color(0.2f, 0.05f, 0.05f, 0.5f));
+                lockPropertyBlock.SetFloat(RimIntensityProp, isLocked ? (isInAttackRange ? 1.6f : 1.1f) : 0.2f);
+                visualMeshRenderer.SetPropertyBlock(lockPropertyBlock);
+            }
+
+            if (lockReticleTransform != null)
+            {
+                lockReticleTransform.gameObject.SetActive(isLocked);
+                if (lockReticleSpriteRenderer != null)
+                {
+                    lockReticleSpriteRenderer.color = lockCol;
+                }
+            }
         }
 
         private void Awake()
@@ -108,10 +158,22 @@ namespace Moba.Runtime.Combat
             if (visualTransform != null)
             {
                 baseVisualLocalY = 1f;
+                if (visualMeshRenderer == null)
+                {
+                    visualMeshRenderer = visualTransform.GetComponent<MeshRenderer>();
+                }
             }
             if (headBarRoot == null)
             {
                 headBarRoot = transform.Find("Dummy_HeadBar");
+            }
+            if (lockReticleTransform == null)
+            {
+                lockReticleTransform = transform.Find("Target_Lock_Reticle");
+                if (lockReticleTransform != null)
+                {
+                    lockReticleSpriteRenderer = lockReticleTransform.GetComponent<SpriteRenderer>();
+                }
             }
         }
 

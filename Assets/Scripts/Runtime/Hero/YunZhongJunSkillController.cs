@@ -96,6 +96,7 @@ namespace Moba.Runtime.Hero
         [SerializeField] private float ultRainTickDamage = 65f;
 
         [Header("Scene Visual & UI References")]
+        [SerializeField] private Transform attackRangeIndicator;
         [SerializeField] private Transform intimidationRingRoot;
         [SerializeField] private Transform targetInnerRedRing;
         [SerializeField] private Transform outerGoldDeterrenceRing;
@@ -110,6 +111,14 @@ namespace Moba.Runtime.Hero
         [SerializeField] private UnityEngine.UI.Image breathFillImage;
         [SerializeField] private UnityEngine.UI.Text stateBadgeText;
         [SerializeField] private Font popupFont;
+
+        [Header("Audio Settings (Inspector Tunable)")]
+        [SerializeField] private AudioSource audioSource;
+        [SerializeField] private AudioClip attackSoundClip;
+        [SerializeField] private AudioClip skill1SoundClip;
+        [SerializeField] private AudioClip skill2SoundClip;
+        [SerializeField] private AudioClip ultAscendSoundClip;
+        [SerializeField] private AudioClip ultSlamSoundClip;
 
         [Header("Live Debug State (Read-Only)")]
         [SerializeField] private float skill1CdRemaining = 0f;
@@ -212,6 +221,32 @@ namespace Moba.Runtime.Hero
             popupFont = uiFont;
         }
 
+        public void BindAudioAndAttackRangeReferences(
+            Transform rangeIndicator,
+            AudioSource audioSrc,
+            AudioClip atkClip,
+            AudioClip s1Clip,
+            AudioClip s2Clip,
+            AudioClip uFlyClip,
+            AudioClip uSlamClip)
+        {
+            attackRangeIndicator = rangeIndicator;
+            audioSource = audioSrc;
+            attackSoundClip = atkClip;
+            skill1SoundClip = s1Clip;
+            skill2SoundClip = s2Clip;
+            ultAscendSoundClip = uFlyClip;
+            ultSlamSoundClip = uSlamClip;
+        }
+
+        private void PlayAudio(AudioClip clip)
+        {
+            if (audioSource != null && clip != null)
+            {
+                audioSource.PlayOneShot(clip);
+            }
+        }
+
         private void Awake()
         {
             heroMovement = GetComponent<MobaHeroMovement>();
@@ -251,6 +286,17 @@ namespace Moba.Runtime.Hero
                     featherRainParticles = foundRain.GetComponentInChildren<ParticleSystem>(true);
                 }
             }
+
+            if (attackRangeIndicator == null)
+            {
+                var foundRange = transform.Find("Hero_AttackRange_Circle");
+                if (foundRange != null) attackRangeIndicator = foundRange;
+            }
+
+            if (audioSource == null)
+            {
+                audioSource = GetComponent<AudioSource>();
+            }
         }
 
         private void SetInitialVisualActiveStates()
@@ -258,6 +304,7 @@ namespace Moba.Runtime.Hero
             if (intimidationRingRoot != null) intimidationRingRoot.gameObject.SetActive(false);
             if (skill2ParryAura != null) skill2ParryAura.gameObject.SetActive(false);
             if (ultCirclesRoot != null) ultCirclesRoot.gameObject.SetActive(false);
+            if (attackRangeIndicator != null) attackRangeIndicator.gameObject.SetActive(false);
             if (featherRainParticles != null) featherRainParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
 
@@ -306,6 +353,7 @@ namespace Moba.Runtime.Hero
 
             if (attackCdRemaining > 0f) return cancelledRecoil;
             attackCdRemaining = attackCooldown;
+            PlayAudio(attackSoundClip);
 
             MobaTargetDummy target = FindNearestDummy(
                 currentForm == YunZhongJunForm.Flying ? flyingAttackRange + 1.2f : groundedAttackRange);
@@ -389,6 +437,7 @@ namespace Moba.Runtime.Hero
 
             skill1State = Skill1State.Diving;
             skill1StateTimer = 0f;
+            PlayAudio(skill1SoundClip);
             heroMovement.SetExternalHorizontalOverride(skill1DiveDir * skill1DiveSpeed, skill1DiveDir);
             SpawnHeroPopup("天隙鸣·加速俯冲", new Color(0.45f, 0.92f, 1f));
             return true;
@@ -403,6 +452,7 @@ namespace Moba.Runtime.Hero
 
             skill2CdRemaining = skill2Cooldown;
             skill2BuffRemaining = skill2BuffDuration;
+            PlayAudio(skill2SoundClip);
 
             if (skill2ParryAura != null)
             {
@@ -467,6 +517,7 @@ namespace Moba.Runtime.Hero
             isInUltAscent = true;
             isUntargetable = true;
             ultAscentTimer = 0f;
+            PlayAudio(ultAscendSoundClip);
 
             SyncRingScales();
             if (ultCirclesRoot != null)
@@ -571,6 +622,59 @@ namespace Moba.Runtime.Hero
 
             UpdateHeroPopups(dt);
             RefreshPlayerHeadBar();
+
+            // 9. 王者荣耀风格：攻击范围地面金圈动态显示 + 敌人外层锁定 Shader 变色判定
+            UpdateAttackRangeAndTargetLock();
+        }
+
+        private void UpdateAttackRangeAndTargetLock()
+        {
+            float currentRange = (currentForm == YunZhongJunForm.Flying) ? flyingAttackRange : groundedAttackRange;
+
+            // 1. 攻击范围地面金圈：仿王者荣耀，攻击/战斗中动态呈现，未攻击时隐藏
+            bool showAttackRange = YunZhongJunLogic.ShouldShowAttackRangeIndicator(combatRemaining, attackCdRemaining, skill1State == Skill1State.Diving);
+            if (attackRangeIndicator != null)
+            {
+                attackRangeIndicator.gameObject.SetActive(showAttackRange);
+                if (showAttackRange)
+                {
+                    float d = currentRange * 2f;
+                    attackRangeIndicator.position = new Vector3(transform.position.x, 0.035f, transform.position.z);
+                    attackRangeIndicator.rotation = Quaternion.Euler(90f, 0f, 0f);
+                    attackRangeIndicator.localScale = new Vector3(d, d, 1f);
+                }
+            }
+
+            // 2. 目标锁定外层 Shader / 锁定环判定：
+            // 攻击范围外呈现红色 Shader / 环锁定；
+            // 敌人进入当前普攻攻击范围内，Shader / 环立即变为黄色偏橘色，告知玩家已锁定并可实施打击。
+            var dummies = FindObjectsByType<MobaTargetDummy>();
+            MobaTargetDummy nearest = null;
+            float nearestDist = float.MaxValue;
+            foreach (var d in dummies)
+            {
+                if (d == null) continue;
+                float dist = HorizontalDistance(transform.position, d.transform.position);
+                if (dist < nearestDist)
+                {
+                    nearestDist = dist;
+                    nearest = d;
+                }
+            }
+
+            foreach (var d in dummies)
+            {
+                if (d == null) continue;
+                if (d == nearest && nearestDist <= 25f)
+                {
+                    bool inRange = nearestDist <= currentRange;
+                    d.SetLockVisual(isLocked: true, isInAttackRange: inRange);
+                }
+                else
+                {
+                    d.SetLockVisual(isLocked: false, isInAttackRange: false);
+                }
+            }
         }
 
         private void LateUpdate()
@@ -780,6 +884,11 @@ namespace Moba.Runtime.Hero
             isInUltAscent = false;
             isUntargetable = false;
             combatRemaining = combatStateDuration;
+
+            PlayAudio(ultSlamSoundClip);
+
+            // 手机物理震动（大招风雷引猛烈砸地冲击反馈）
+            try { Handheld.Vibrate(); } catch { }
 
             if (ultCirclesRoot != null)
             {

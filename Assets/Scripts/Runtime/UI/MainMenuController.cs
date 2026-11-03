@@ -37,6 +37,8 @@ namespace Moba.Runtime.UI
         [SerializeField] private MainMenuClickEffect clickEffect;
 
         [Header("Audio / Feel Feedback")]
+        [SerializeField] private AudioSource audioSource;
+        [SerializeField] private AudioClip startSoundClip;
         [SerializeField] private bool triggerClickVibration = true;
 
         private bool isStartingGame = false;
@@ -52,7 +54,9 @@ namespace Moba.Runtime.UI
             UnityEngine.UI.Image fillImg,
             UnityEngine.UI.Image bgImg,
             UnityEngine.UI.Text statusTxt,
-            MainMenuClickEffect fx)
+            MainMenuClickEffect fx,
+            AudioSource audioSrc = null,
+            AudioClip startClip = null)
         {
             titleText = title;
             startButton = btnStart;
@@ -64,6 +68,8 @@ namespace Moba.Runtime.UI
             sliderBackgroundImage = bgImg;
             loadingStatusText = statusTxt;
             clickEffect = fx;
+            audioSource = audioSrc;
+            startSoundClip = startClip;
         }
 
         private void Awake()
@@ -167,7 +173,12 @@ namespace Moba.Runtime.UI
             if (isStartingGame) return;
             isStartingGame = true;
 
-            // 1. 触发点击粒子光环爆发
+            // 1. 触发点击粒子光环爆发与音效
+            if (audioSource != null && startSoundClip != null)
+            {
+                audioSource.PlayOneShot(startSoundClip);
+            }
+
             if (clickEffect != null && startButton != null)
             {
                 Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(null, startButton.transform.position);

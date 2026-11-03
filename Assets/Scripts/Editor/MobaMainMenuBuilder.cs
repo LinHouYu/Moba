@@ -26,6 +26,7 @@ namespace Moba.Editor
         private const string FontAssetPath = "Assets/UI/NKGMoba/Fonts/SourceHanSansCN-Medium.otf";
         private const string RingSpritePath = "Assets/UI/NKGMoba/Sprites/Ring_Clean.png";
         private const string MainJfifPath = "Assets/Resources/main.jfif";
+        private const string StartSoundPath = "Assets/Audio/UI_StartGame.wav";
         private const string TriggerFile = "Temp/build_main_scene.trigger";
 
         [InitializeOnLoadMethod]
@@ -343,6 +344,10 @@ namespace Moba.Editor
             loadingContainerGo.SetActive(false); // 初始时隐藏
 
             // 10. MainMenuController (挂在 Canvas 上)
+            AudioClip startAudio = AssetDatabase.LoadAssetAtPath<AudioClip>(StartSoundPath);
+            AudioSource audioSource = canvasGo.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+
             MainMenuController controller = canvasGo.AddComponent<MainMenuController>();
             controller.BindComponents(
                 titleTxt,
@@ -354,7 +359,9 @@ namespace Moba.Editor
                 fillImg,
                 sliderBgImg,
                 statusTxt,
-                clickFx);
+                clickFx,
+                audioSource,
+                startAudio);
 
             // 保存场景文件
             string scenesDir = Path.GetDirectoryName(MainScenePath);

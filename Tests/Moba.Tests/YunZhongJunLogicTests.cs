@@ -153,5 +153,51 @@ namespace Moba.Tests
             Assert.That(formParryUlt, Is.EqualTo(YunZhongJunForm.Flying));
             Assert.That(breathParryFull, Is.EqualTo(100f));
         }
+
+        [Test]
+        public void AttackRangeAndTargetLock_InAndOutRange_CorrectlyEvaluated()
+        {
+            Vector3 heroPos = new Vector3(0f, 0f, 0f);
+            Vector3 insideTarget = new Vector3(0f, 0f, 3.0f); // 3m <= 3.4m flying range
+            Vector3 outsideTarget = new Vector3(0f, 0f, 4.5f); // 4.5m > 3.4m flying range
+
+            float flyingRange = 3.4f;
+            Assert.That(YunZhongJunLogic.IsTargetInAttackRange(heroPos, insideTarget, flyingRange), Is.True);
+            Assert.That(YunZhongJunLogic.IsTargetInAttackRange(heroPos, outsideTarget, flyingRange), Is.False);
+
+            // Grounded range (5.8m)
+            float groundedRange = 5.8f;
+            Assert.That(YunZhongJunLogic.IsTargetInAttackRange(heroPos, outsideTarget, groundedRange), Is.True);
+        }
+
+        [Test]
+        public void AttackRangeIndicatorVisibility_HonorOfKingsStyle_OnlyShowsWhenAttackingOrInCombat()
+        {
+            // Idle and not in combat -> Hidden
+            Assert.That(YunZhongJunLogic.ShouldShowAttackRangeIndicator(combatRemaining: 0f, attackCdRemaining: 0f, isAttacking: false), Is.False);
+
+            // In combat -> Shown
+            Assert.That(YunZhongJunLogic.ShouldShowAttackRangeIndicator(combatRemaining: 3.5f, attackCdRemaining: 0f, isAttacking: false), Is.True);
+
+            // Attacking / windup -> Shown
+            Assert.That(YunZhongJunLogic.ShouldShowAttackRangeIndicator(combatRemaining: 0f, attackCdRemaining: 0.3f, isAttacking: false), Is.True);
+            Assert.That(YunZhongJunLogic.ShouldShowAttackRangeIndicator(combatRemaining: 0f, attackCdRemaining: 0f, isAttacking: true), Is.True);
+        }
+
+        [Test]
+        public void TargetLockOutlineColor_RedWhenOutside_GoldenOrangeWhenInsideRange()
+        {
+            Color outsideColor = YunZhongJunLogic.GetTargetLockOutlineColor(isInAttackRange: false);
+            Color insideColor = YunZhongJunLogic.GetTargetLockOutlineColor(isInAttackRange: true);
+
+            // Outside range -> Red (high R, low G)
+            Assert.That(outsideColor.r, Is.GreaterThan(0.8f));
+            Assert.That(outsideColor.g, Is.LessThan(0.35f));
+
+            // Inside range -> Golden-Orange (high R, medium G ~0.6)
+            Assert.That(insideColor.r, Is.GreaterThan(0.8f));
+            Assert.That(insideColor.g, Is.GreaterThan(0.5f));
+            Assert.That(insideColor.b, Is.LessThan(0.2f));
+        }
     }
 }
