@@ -76,7 +76,7 @@ namespace Moba.Editor
                 // 3. Setup Build Options
                 BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
                 {
-                    scenes = new[] { "Assets/Scenes/Game.unity" },
+                    scenes = new[] { "Assets/Scenes/Main.unity", "Assets/Scenes/Game.unity" },
                     locationPathName = OutputApkPath,
                     target = BuildTarget.Android,
                     options = BuildOptions.None
