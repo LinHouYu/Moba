@@ -24,13 +24,14 @@ namespace Moba.Editor
         private const string FontAssetPath = "Assets/UI/NKGMoba/Fonts/SourceHanSansCN-Medium.otf";
         private const string RingSpritePath = "Assets/UI/NKGMoba/Sprites/Ring_Clean.png";
         private const string CircleSpritePath = "Assets/UI/NKGMoba/Sprites/Circle_Base.png";
+        private const string SolidCircleSpritePath = "Assets/UI/NKGMoba/Sprites/Circle_Solid.png";
         private const string HeadBarBgPath = "Assets/UI/NKGMoba/Sprites/HeadBar_Bg.png";
         private const string HeadBarHpPath = "Assets/UI/NKGMoba/Sprites/HeadBar_HP.png";
         private const string HeadBarMpPath = "Assets/UI/NKGMoba/Sprites/HeadBar_MP.png";
         private const string IconAttackPath = "Assets/UI/NKGMoba/Sprites/Icon_Attack_Claw.png";
-        private const string IconSkill1Path = "Assets/Resources/skill1.jpg";
+        private const string IconSkill1Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill1_WindDive.png";
         private const string IconSkill2Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill2_ParryWhirl.png";
-        private const string IconSkill3Path = "Assets/UI/NKGMoba/Sprites/Icon_Skill3_Ultimate.png";
+        private const string IconSkill3Path = "Assets/Resources/skill1.jpg";
 
         private const string HeroAttackAudioPath = "Assets/Audio/Hero_Attack.wav";
         private const string HeroSkill1AudioPath = "Assets/Audio/Hero_Skill1_Dive.wav";
@@ -123,6 +124,7 @@ namespace Moba.Editor
 
             Sprite ringSprite = AssetDatabase.LoadAssetAtPath<Sprite>(RingSpritePath);
             Sprite circleSprite = AssetDatabase.LoadAssetAtPath<Sprite>(CircleSpritePath);
+            Sprite solidCircleSprite = AssetDatabase.LoadAssetAtPath<Sprite>(SolidCircleSpritePath);
             Sprite barBgSprite = AssetDatabase.LoadAssetAtPath<Sprite>(HeadBarBgPath);
             Sprite barHpSprite = AssetDatabase.LoadAssetAtPath<Sprite>(HeadBarHpPath);
             Sprite barMpSprite = AssetDatabase.LoadAssetAtPath<Sprite>(HeadBarMpPath);
@@ -188,6 +190,7 @@ namespace Moba.Editor
                 joystickInput,
                 heroSkillCtrl,
                 circleSprite,
+                solidCircleSprite,
                 ringSprite,
                 iconAttack,
                 iconSkill1,
@@ -713,6 +716,7 @@ namespace Moba.Editor
             MobaJoystickInput joystickInput,
             YunZhongJunSkillController heroSkillCtrl,
             Sprite circleSprite,
+            Sprite solidCircleSprite,
             Sprite ringSprite,
             Sprite iconAttack,
             Sprite iconSkill1,
@@ -818,6 +822,7 @@ namespace Moba.Editor
                 anchoredPos: new Vector2(-175f, 160f),
                 size: 216f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconAttack,
                 bgColor: new Color(0.16f, 0.24f, 0.34f, 0.92f),
@@ -832,6 +837,7 @@ namespace Moba.Editor
                 anchoredPos: new Vector2(-360f, 85f),
                 size: 112f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: null,
                 bgColor: new Color(0.15f, 0.22f, 0.3f, 0.9f),
@@ -847,6 +853,7 @@ namespace Moba.Editor
                 anchoredPos: new Vector2(-95f, 370f),
                 size: 112f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: null,
                 bgColor: new Color(0.15f, 0.22f, 0.3f, 0.9f),
@@ -856,13 +863,14 @@ namespace Moba.Editor
                 tagFontSize: 22,
                 centerTag: true);
 
-            // 一技能：天隙鸣（标签：加速，设定为 skill1.jpg，严格裁剪为圆形，内部撑满）
+            // 一技能：天隙鸣（标签：加速，保持原技能贴图）
             var btnSkill1 = CreateSkillCircleButton(
                 "Btn_Skill1",
                 actionRoot.transform,
                 anchoredPos: new Vector2(-515f, 135f),
                 size: 154f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill1,
                 subtitleTag: "加速",
@@ -881,6 +889,7 @@ namespace Moba.Editor
                 anchoredPos: new Vector2(-405f, 315f),
                 size: 154f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill2,
                 subtitleTag: "免控",
@@ -891,13 +900,14 @@ namespace Moba.Editor
                 out _,
                 createLockOverlay: false);
 
-            // 三技能大招：风雷引（标签：伤害，冲天砸地加手机震动）
+            // 三技能大招：风雷引（标签：伤害，贴图设定为 skill1.jpg，纯实心圆遮罩裁剪，中心绝不挖空）
             var btnSkill3 = CreateSkillCircleButton(
                 "Btn_Skill3",
                 actionRoot.transform,
                 anchoredPos: new Vector2(-225f, 480f),
                 size: 164f,
                 circleSprite: circleSprite,
+                solidCircleSprite: solidCircleSprite,
                 ringSprite: ringSprite,
                 iconSprite: iconSkill3,
                 subtitleTag: "伤害",
@@ -934,6 +944,7 @@ namespace Moba.Editor
             Vector2 anchoredPos,
             float size,
             Sprite circleSprite,
+            Sprite solidCircleSprite,
             Sprite ringSprite,
             Sprite iconSprite,
             Color bgColor,
@@ -970,7 +981,7 @@ namespace Moba.Editor
                 maskRt.sizeDelta = new Vector2(innerSize, innerSize);
 
                 var maskImg = maskGo.GetComponent<UnityEngine.UI.Image>();
-                maskImg.sprite = circleSprite;
+                maskImg.sprite = solidCircleSprite;
                 maskImg.raycastTarget = false;
 
                 var maskComp = maskGo.GetComponent<UnityEngine.UI.Mask>();
@@ -1007,6 +1018,7 @@ namespace Moba.Editor
             Vector2 anchoredPos,
             float size,
             Sprite circleSprite,
+            Sprite solidCircleSprite,
             Sprite ringSprite,
             Sprite iconSprite,
             string subtitleTag,
@@ -1033,7 +1045,7 @@ namespace Moba.Editor
 
             if (iconSprite != null)
             {
-                // 核心需求：圆形 Mask 裁剪容器，确保无论 JPEG 或方形图片，都严格裁成圆形不留方角与黑边，且刚好拉伸撑满内部圆圈
+                // 核心需求：使用纯实心圆遮罩 (SolidCircle)，确保贴图严格裁剪为圆形且中心 100% 完整显示，绝不会在中心抠出空心洞！
                 GameObject maskGo = new GameObject("Icon_Mask_Container", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Mask));
                 maskGo.transform.SetParent(go.transform, false);
                 RectTransform maskRt = maskGo.GetComponent<RectTransform>();
@@ -1041,11 +1053,11 @@ namespace Moba.Editor
                 maskRt.anchorMax = new Vector2(0.5f, 0.5f);
                 maskRt.pivot = new Vector2(0.5f, 0.5f);
                 maskRt.anchoredPosition = Vector2.zero;
-                float innerSize = size * 0.86f;
+                float innerSize = size * 0.88f;
                 maskRt.sizeDelta = new Vector2(innerSize, innerSize);
 
                 var maskImg = maskGo.GetComponent<UnityEngine.UI.Image>();
-                maskImg.sprite = circleSprite;
+                maskImg.sprite = solidCircleSprite;
                 maskImg.raycastTarget = false;
 
                 var maskComp = maskGo.GetComponent<UnityEngine.UI.Mask>();
@@ -1080,13 +1092,13 @@ namespace Moba.Editor
             lockedOverlay = null;
             if (createLockOverlay)
             {
-                lockedOverlay = CreateUIImage("Grounded_Lock_Overlay", go.transform, circleSprite, new Color(0.05f, 0.05f, 0.08f, 0.76f), Vector2.zero, new Vector2(size, size));
+                lockedOverlay = CreateUIImage("Grounded_Lock_Overlay", go.transform, solidCircleSprite, new Color(0.05f, 0.05f, 0.08f, 0.76f), Vector2.zero, new Vector2(size * 0.88f, size * 0.88f));
                 CreateLabel("Lock_Text", lockedOverlay.transform, uiFont, "需飞行", 20, Vector2.zero, new Vector2(size, 34f), new Color(1f, 0.6f, 0.3f));
                 lockedOverlay.SetActive(false);
             }
 
             // Radial 360 Cooldown Mask (adapted from NKGMoba SkillProBar)
-            GameObject cdObj = CreateUIImage("CD_Mask", go.transform, circleSprite, new Color(0.04f, 0.06f, 0.1f, 0.78f), Vector2.zero, new Vector2(size, size));
+            GameObject cdObj = CreateUIImage("CD_Mask", go.transform, solidCircleSprite, new Color(0.04f, 0.06f, 0.1f, 0.78f), Vector2.zero, new Vector2(size * 0.88f, size * 0.88f));
             cdMask = cdObj.GetComponent<UnityEngine.UI.Image>();
             cdMask.type = UnityEngine.UI.Image.Type.Filled;
             cdMask.fillMethod = UnityEngine.UI.Image.FillMethod.Radial360;
@@ -1281,6 +1293,7 @@ namespace Moba.Editor
             {
                 RingSpritePath,
                 CircleSpritePath,
+                SolidCircleSpritePath,
                 HeadBarBgPath,
                 HeadBarHpPath,
                 HeadBarMpPath,
@@ -1318,10 +1331,19 @@ namespace Moba.Editor
                     importer.spritePixelsPerUnit = 1024f;
                     dirty = true;
                 }
+                else if (path == SolidCircleSpritePath && Mathf.Abs(importer.spritePixelsPerUnit - 512f) > 0.1f)
+                {
+                    importer.spritePixelsPerUnit = 512f;
+                    dirty = true;
+                }
 
                 if (dirty)
                 {
                     importer.SaveAndReimport();
+                }
+                else if (AssetDatabase.LoadAssetAtPath<Sprite>(path) == null)
+                {
+                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
                 }
             }
         }
