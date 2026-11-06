@@ -98,9 +98,12 @@ namespace Moba.Runtime.Movement
             }
             if (cachedVisualTransform != null && characterController != null)
             {
+                float baseOffsetY = cachedVisualTransform.GetComponent<MeshFilter>() != null
+                    ? characterController.center.y
+                    : 0f;
                 cachedVisualTransform.localPosition = new Vector3(
                     0f,
-                    characterController.center.y + visualExtraHeightOffset,
+                    baseOffsetY + visualExtraHeightOffset,
                     0f);
             }
         }
@@ -108,6 +111,8 @@ namespace Moba.Runtime.Movement
         public float CurrentSpeed => currentHorizontalSpeed;
         public bool IsMoving => currentHorizontalSpeed > 0.05f;
         public Vector3 MoveDirection => currentMoveDirection;
+        public Vector2 CurrentRawInput => debugInput;
+        public float InputMagnitude => debugInput.magnitude;
 
         private void Awake()
         {

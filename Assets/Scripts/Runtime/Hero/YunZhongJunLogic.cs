@@ -15,13 +15,22 @@ namespace Moba.Runtime.Hero
         InnerRing = 2      // 内圈：造成伤害 + 击飞 + 叠加1层抓击印记
     }
 
+    public enum PterosaurAnimState
+    {
+        Idle = 0,     // 静止待机 (idle, 3.0s Loop)
+        Walk = 1,     // 半截摇杆四足迈步 (walk, 1.0s Loop)
+        Sprint = 2,   // 摇杆拉满/一技能疾跑冲刺 (sprint, 0.667s Loop)
+        FlySlam = 3   // 三技能飞天砸地 (fly_slam, 3.6s Once, T=2.40s 砸地暴击)
+    }
+
     /// <summary>
-    /// 云中君核心机制纯逻辑计算（无 MonoBehaviour 耦合，支持完整单元测试验证）。
+    /// 云中君/翼龙核心机制纯逻辑计算（无 MonoBehaviour 耦合，支持完整单元测试验证）。
     /// 涵盖：
     /// 1. 飞鸡/走地鸡气息转换与“二技能配合大招秒变飞鸡”
     /// 2. 一技能命中威慑圈（圈内降低目标对云中君30%伤害、出圈失效）、倒飞Y轴抛物线、旧版1秒眩晕BUG（描述0.5秒实际1.0秒）
     /// 3. 大招内外圈判定（外圈不晕，内圈击飞+叠1层印记）
     /// 4. 五层抓击印记（叠层增伤，且必须叠满5层敌方移动才有撕裂额外伤害）
+    /// 5. 翼龙动画状态机映射（idle / walk / sprint / fly_slam）与摄像机微震动衰减计算
     /// </summary>
     public static class YunZhongJunLogic
     {
@@ -29,6 +38,10 @@ namespace Moba.Runtime.Hero
         public const float DefaultIntimidationDamageReduction = 0.30f;
         public const float DescribedSkill1StunDuration = 0.5f;
         public const float LegacyBugActualSkill1StunDuration = 1.0f;
+        public const float FlySlamImpactTimestamp = 2.40f;
+        public const float FlySlamTotalDuration = 3.60f;
+        public const float DefaultWalkThreshold = 0.05f;
+        public const float DefaultSprintThreshold = 0.75f;
 
         public static readonly Color TargetLockRedColor = new Color(1f, 0.18f, 0.18f, 1f);
         public static readonly Color TargetLockGoldenOrangeColor = new Color(1f, 0.62f, 0.08f, 1f);
@@ -280,6 +293,131 @@ namespace Moba.Runtime.Hero
             }
 
             return distanceMoved * Mathf.Max(0f, extraDamagePerMeter);
+        }
+
+        /// <summary>
+        /// 翼龙动作状态判定：
+        /// - 正在释放三技能大招（fly_slam）时，优先播放 FlySlam；
+        /// - 正在释放一技能蓝色冲刺 或 虚拟摇杆拉满（>= sprintThreshold）时，调用 Sprint 动画；
+        /// - 玩家拖动半截摇杆（>= walkThreshold 且 < sprintThreshold）时，调用 Walk 动画；
+        /// - 英雄不移动（< walkThreshold）时，采用 Idle 动画。
+        /// </summary>
+        public static PterosaurAnimState EvaluatePterosaurAnimationState(
+            float joystickMagnitude,
+            bool isDashingSkill1,
+            bool isPlayingFlySlam,
+            float walkThreshold = DefaultWalkThreshold,
+            float sprintThreshold = DefaultSprintThreshold)
+        {
+            if (isPlayingFlySlam)
+            {
+                return PterosaurAnimState.FlySlam;
+            }
+
+            if (isDashingSkill1)
+            {
+                return PterosaurAnimState.Sprint;
+            }
+
+            float safeWalk = Mathf.Clamp(walkThreshold, 0.001f, 0.9f);
+            float safeSprint = Mathf.Clamp(sprintThreshold, safeWalk + 0.05f, 0.99f);
+            float mag = Mathf.Max(0f, joystickMagnitude);
+
+            if (mag >= safeSprint)
+            {
+                return PterosaurAnimState.Sprint;
+            }
+
+            if (mag >= safeWalk)
+            {
+                return PterosaurAnimState.Walk;
+            }
+
+            return PterosaurAnimState.Idle;
+        }
+
+        /// <summary>
+        /// 获取翼龙动画状态对应的标准 FBX Clip 名称。
+        /// </summary>
+        public static string GetAnimationClipName(PterosaurAnimState state)
+        {
+            switch (state)
+            {
+                case PterosaurAnimState.Walk:
+                    return "walk";
+                case PterosaurAnimState.Sprint:
+                    return "sprint";
+                case PterosaurAnimState.FlySlam:
+                    return "fly_slam";
+                case PterosaurAnimState.Idle:
+                default:
+                    return "idle";
+            }
+        }
+
+        /// <summary>
+        /// 计算三技能 fly_slam（总长3.6s，T=2.40s巨爪砸地）期间的额外高度曲线：
+        /// - 0.00 ~ 0.25s：地面蓄力下蹲（0m）
+        /// - 0.25 ~ 0.80s：起飞蓄力冲天（平滑升至 maxSkyHeight）
+        /// - 0.80 ~ 1.80s：空中扇翼盘旋（保持在 maxSkyHeight 附近微幅扇翼起伏）
+        /// - 1.80 ~ 2.40s：收翼俯冲砸向地面（在 T=2.40s 砸地暴击瞬间精准归零 0m）
+        /// - 2.40 ~ 3.60s：砸地暴击与收翼挺身回归待机（0m）
+        /// </summary>
+        public static float EvaluateFlySlamHeightOffset(
+            float elapsed,
+            float slamImpactTime = FlySlamImpactTimestamp,
+            float maxSkyHeight = 2.2f)
+        {
+            if (elapsed <= 0.25f || elapsed >= slamImpactTime || maxSkyHeight <= 0f)
+            {
+                return 0f;
+            }
+
+            float takeoffEnd = Mathf.Min(0.80f, slamImpactTime * 0.35f);
+            float diveStart = Mathf.Clamp(1.80f, takeoffEnd + 0.1f, slamImpactTime - 0.1f);
+
+            if (elapsed < takeoffEnd)
+            {
+                float t = Mathf.InverseLerp(0.25f, takeoffEnd, elapsed);
+                float smooth = t * t * (3f - 2f * t);
+                return maxSkyHeight * smooth;
+            }
+
+            if (elapsed < diveStart)
+            {
+                float flapWave = Mathf.Sin((elapsed - takeoffEnd) * Mathf.PI * 4f) * 0.12f;
+                return Mathf.Max(0f, maxSkyHeight + flapWave);
+            }
+
+            // 1.80s ~ 2.40s 急速俯冲砸地
+            float diveT = Mathf.InverseLerp(diveStart, slamImpactTime, elapsed);
+            float diveCurve = 1f - (diveT * diveT);
+            return Mathf.Max(0f, maxSkyHeight * diveCurve);
+        }
+
+        /// <summary>
+        /// 计算摄像机微震动位移偏移（用于一技能撞击敌人微震与三技能砸地微震，二次包络平滑衰减至0）。
+        /// </summary>
+        public static Vector3 EvaluateCameraShakeOffset(
+            float elapsed,
+            float duration,
+            float magnitude,
+            float frequency = 32f)
+        {
+            if (duration <= 0.0001f || elapsed < 0f || elapsed >= duration || magnitude <= 0.0001f)
+            {
+                return Vector3.zero;
+            }
+
+            float normalizedTime = Mathf.Clamp01(elapsed / duration);
+            float damper = (1f - normalizedTime) * (1f - normalizedTime);
+            float phase = elapsed * Mathf.Max(1f, frequency) * Mathf.PI * 2f;
+
+            float offsetX = Mathf.Sin(phase) * magnitude * damper;
+            float offsetY = Mathf.Cos(phase * 1.35f) * (magnitude * 0.85f) * damper;
+            float offsetZ = Mathf.Sin(phase * 0.75f + 1.1f) * (magnitude * 0.55f) * damper;
+
+            return new Vector3(offsetX, offsetY, offsetZ);
         }
     }
 }

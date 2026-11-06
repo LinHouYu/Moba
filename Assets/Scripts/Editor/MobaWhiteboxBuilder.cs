@@ -1,5 +1,7 @@
 using System.IO;
+using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -39,6 +41,12 @@ namespace Moba.Editor
         private const string HeroSkill3FlyAudioPath = "Assets/Audio/Hero_Skill3_Fly.wav";
         private const string HeroSkill3SlamAudioPath = "Assets/Audio/Hero_Skill3_Slam.wav";
 
+        private const string PterosaurFbxPath = "Assets/Resources/翼龙/HonorOfKings_Pterosaur_Animated.fbx";
+        private const string PterosaurAtlasPath = "Assets/Resources/翼龙/pterosaur_atlas.png";
+        private const string PterosaurMatPath = "Assets/Materials/Pterosaur_Hero_Mat.mat";
+        private const string PterosaurAnimatorPath = "Assets/Resources/翼龙/Pterosaur_Hero_Animator.controller";
+        private const string SkillVfxMatPath = "Assets/Materials/Pterosaur_Skill_Vfx.mat";
+
         [InitializeOnLoadMethod]
         private static void AutoCheckAndBuildScene()
         {
@@ -76,14 +84,18 @@ namespace Moba.Editor
 
                 bool needsUpgrade = player == null
                     || player.transform.Find("Hero_Visual") == null
+                    || player.transform.Find("Hero_Visual/Pterosaur_Model") == null
                     || player.transform.Find("Hero_AttackRange_Circle") == null
                     || player.GetComponent<YunZhongJunSkillController>() == null
+                    || player.GetComponent<PterosaurSkillVfxController>() == null
                     || dummy == null
                     || dummy.transform.Find("Target_Lock_Reticle") == null
                     || dummy.GetComponent<MobaTargetDummy>() == null
                     || GameObject.Find("Whitebox_Ground") == null
                     || GameObject.Find("Intimidation_Ring_Group") == null
                     || GameObject.Find("Ult_FeatherRain_Root") == null
+                    || GameObject.Find("Skill1_BlueHit_3DVFX_Root") == null
+                    || GameObject.Find("Skill3_BlueSlam_3DVFX_Root") == null
                     || cam == null
                     || cam.GetComponent<MobaCameraFollow>() == null
                     || touchZone == null
@@ -92,7 +104,7 @@ namespace Moba.Editor
 
                 if (needsUpgrade)
                 {
-                    Debug.Log("[MobaWhiteboxBuilder] Upgrading Game.unity with Yun Zhongjun Hero, Stationary Dummy & Mobile Skill UI...");
+                    Debug.Log("[MobaWhiteboxBuilder] Upgrading Game.unity with Pterosaur Animated Hero & 3D Skill VFX...");
                     BuildScene();
                 }
             }
@@ -112,6 +124,7 @@ namespace Moba.Editor
         {
             EnsureNKGMobaSpritesConfigured();
             EnsureMaterialFolderExists();
+            EnsurePterosaurAssetsConfigured();
 
             var currentScene = EditorSceneManager.GetActiveScene();
             if (currentScene.path != ScenePath)
@@ -252,12 +265,6 @@ namespace Moba.Editor
             Font uiFont)
         {
             GameObject player = GameObject.Find("Moba_Hero_Player");
-            if (player != null && player.transform.Find("Hero_Visual") == null)
-            {
-                Object.DestroyImmediate(player);
-                player = null;
-            }
-
             if (player == null)
             {
                 player = new GameObject("Moba_Hero_Player");
@@ -268,36 +275,67 @@ namespace Moba.Editor
                 cc.stepOffset = 0.3f;
                 cc.slopeLimit = 45f;
                 cc.minMoveDistance = 0f;
+            }
 
-                GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                visual.name = "Hero_Visual";
-                visual.transform.SetParent(player.transform, false);
-                visual.transform.localPosition = new Vector3(0f, 1f, 0f);
-                var visualCol = visual.GetComponent<Collider>();
-                if (visualCol != null) Object.DestroyImmediate(visualCol);
-                AssignSavedLitMaterial(visual.GetComponent<MeshRenderer>(), "Assets/Materials/Hero_Material.mat", new Color(0.15f, 0.55f, 0.95f));
-
-                GameObject visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                visor.name = "Direction_Visor";
-                visor.transform.SetParent(visual.transform, false);
-                visor.transform.localPosition = new Vector3(0f, 0.4f, 0.5f);
-                visor.transform.localScale = new Vector3(0.35f, 0.2f, 0.5f);
-                var visorCol = visor.GetComponent<Collider>();
-                if (visorCol != null) Object.DestroyImmediate(visorCol);
-                AssignSavedLitMaterial(visor.GetComponent<MeshRenderer>(), "Assets/Materials/Visor_Material.mat", new Color(1f, 0.85f, 0.2f));
+            // 1. Hero Visual (挂载翼龙 3D 骨骼动画模型，移除旧的 Capsule 碰撞体/滤镜)
+            Transform visual = player.transform.Find("Hero_Visual");
+            if (visual == null)
+            {
+                GameObject visualGo = new GameObject("Hero_Visual");
+                visualGo.transform.SetParent(player.transform, false);
+                visualGo.transform.localPosition = Vector3.zero;
+                visual = visualGo.transform;
             }
             else
             {
-                var visual = player.transform.Find("Hero_Visual");
-                if (visual != null)
+                // 清理旧 Capsule 上的 MeshFilter, MeshRenderer, Collider, Visor
+                var mf = visual.GetComponent<MeshFilter>();
+                if (mf != null) Object.DestroyImmediate(mf);
+                var mr = visual.GetComponent<MeshRenderer>();
+                if (mr != null) Object.DestroyImmediate(mr);
+                var col = visual.GetComponent<Collider>();
+                if (col != null) Object.DestroyImmediate(col);
+                var visor = visual.Find("Direction_Visor");
+                if (visor != null) Object.DestroyImmediate(visor.gameObject);
+            }
+
+            // 2. 实例化/升级翼龙 3D 模型
+            Transform pterosaurModel = visual.Find("Pterosaur_Model");
+            if (pterosaurModel == null)
+            {
+                GameObject fbxPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PterosaurFbxPath);
+                if (fbxPrefab != null)
                 {
-                    AssignSavedLitMaterial(visual.GetComponent<MeshRenderer>(), "Assets/Materials/Hero_Material.mat", new Color(0.15f, 0.55f, 0.95f));
-                    var visor = visual.Find("Direction_Visor");
-                    if (visor != null)
+                    GameObject modelInst = Object.Instantiate(fbxPrefab, visual);
+                    modelInst.name = "Pterosaur_Model";
+                    pterosaurModel = modelInst.transform;
+                }
+            }
+
+            PterosaurAnimatorBridge animBridge = null;
+            if (pterosaurModel != null)
+            {
+                pterosaurModel.localPosition = Vector3.zero;
+                pterosaurModel.localRotation = Quaternion.Euler(0f, 180f, 0f); // 喙向前对齐 +Z
+                pterosaurModel.localScale = new Vector3(1.35f, 1.35f, 1.35f);
+
+                Material pMat = AssetDatabase.LoadAssetAtPath<Material>(PterosaurMatPath);
+                if (pMat != null)
+                {
+                    foreach (var r in pterosaurModel.GetComponentsInChildren<Renderer>(true))
                     {
-                        AssignSavedLitMaterial(visor.GetComponent<MeshRenderer>(), "Assets/Materials/Visor_Material.mat", new Color(1f, 0.85f, 0.2f));
+                        r.sharedMaterial = pMat;
                     }
                 }
+
+                var animator = pterosaurModel.GetComponent<Animator>();
+                if (animator == null) animator = pterosaurModel.gameObject.AddComponent<Animator>();
+                animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(PterosaurAnimatorPath);
+                animator.applyRootMotion = false;
+                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
+                animBridge = pterosaurModel.GetComponent<PterosaurAnimatorBridge>();
+                if (animBridge == null) animBridge = pterosaurModel.gameObject.AddComponent<PterosaurAnimatorBridge>();
             }
 
             player.transform.position = Vector3.zero;
@@ -320,12 +358,22 @@ namespace Moba.Editor
             DestroyIfExists(player.transform, "Ultimate_Circles_Group");
             DestroyIfExists(player.transform, "Player_HeadBar");
             DestroyIfExists(player.transform, "Hero_AttackRange_Circle");
+            DestroyIfExists(player.transform, "Skill1_BlueDash_3DVFX");
+            DestroyIfExists(player.transform, "Skill3_Dive_3DFunnel");
+            DestroyIfExists(player.transform, "Left_Wingtip_Trail");
+            DestroyIfExists(player.transform, "Right_Wingtip_Trail");
 
             var existingIntimidation = GameObject.Find("Intimidation_Ring_Group");
             if (existingIntimidation != null) Object.DestroyImmediate(existingIntimidation);
 
             var existingRain = GameObject.Find("Ult_FeatherRain_Root");
             if (existingRain != null) Object.DestroyImmediate(existingRain);
+
+            var existingHitBurst = GameObject.Find("Skill1_BlueHit_3DVFX_Root");
+            if (existingHitBurst != null) Object.DestroyImmediate(existingHitBurst);
+
+            var existingSlamRoot = GameObject.Find("Skill3_BlueSlam_3DVFX_Root");
+            if (existingSlamRoot != null) Object.DestroyImmediate(existingSlamRoot);
 
             // A. 一技能威慑圈组（目标外侧红色小圈 + 更外层金色威慑圈）
             GameObject intimidationGroup = new GameObject("Intimidation_Ring_Group");
@@ -451,6 +499,173 @@ namespace Moba.Editor
                 s2Clip,
                 ultFlyClip,
                 ultSlamClip);
+
+            // H. 翼龙 3D 技能立体特效层级与控制器配置
+            Material vfxMat = GetOrCreateSkillVfxMaterial();
+
+            // 1. Skill 1 蓝色冲刺特效 (挂载在 player 下)
+            GameObject dashVfxGo = new GameObject("Skill1_BlueDash_3DVFX");
+            dashVfxGo.transform.SetParent(player.transform, false);
+            dashVfxGo.transform.localPosition = new Vector3(0f, 1.0f, 0f);
+
+            GameObject spearConeGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            spearConeGo.name = "Dash_3D_SpearCone";
+            spearConeGo.transform.SetParent(dashVfxGo.transform, false);
+            spearConeGo.transform.localPosition = new Vector3(0f, 0f, 1.2f);
+            spearConeGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            spearConeGo.transform.localScale = new Vector3(1.35f, 1.8f, 1.35f);
+            DestroyCollider(spearConeGo);
+            spearConeGo.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject innerCoreGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            innerCoreGo.name = "Dash_3D_InnerCore";
+            innerCoreGo.transform.SetParent(dashVfxGo.transform, false);
+            innerCoreGo.transform.localPosition = new Vector3(0f, 0f, 1.3f);
+            innerCoreGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            innerCoreGo.transform.localScale = new Vector3(0.75f, 2.0f, 0.75f);
+            DestroyCollider(innerCoreGo);
+            innerCoreGo.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject vortexFront = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            vortexFront.name = "Dash_3D_VortexRing_Front";
+            vortexFront.transform.SetParent(dashVfxGo.transform, false);
+            vortexFront.transform.localPosition = new Vector3(0f, 0f, 2.2f);
+            vortexFront.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            vortexFront.transform.localScale = new Vector3(1.8f, 0.04f, 1.8f);
+            DestroyCollider(vortexFront);
+            vortexFront.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject vortexRear = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            vortexRear.name = "Dash_3D_VortexRing_Rear";
+            vortexRear.transform.SetParent(dashVfxGo.transform, false);
+            vortexRear.transform.localPosition = new Vector3(0f, 0f, 0.4f);
+            vortexRear.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            vortexRear.transform.localScale = new Vector3(2.4f, 0.04f, 2.4f);
+            DestroyCollider(vortexRear);
+            vortexRear.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            ParticleSystem dashPs = BuildDashParticles(dashVfxGo.transform);
+
+            TrailRenderer leftTrail = CreateWingTrail(player.transform, "Left_Wingtip_Trail", new Vector3(-1.85f, 1.15f, -0.2f), vfxMat);
+            TrailRenderer rightTrail = CreateWingTrail(player.transform, "Right_Wingtip_Trail", new Vector3(1.85f, 1.15f, -0.2f), vfxMat);
+            dashVfxGo.SetActive(false);
+
+            // 2. Skill 1 撞击爆裂特效 (场景根节点)
+            GameObject hitBurstGo = new GameObject("Skill1_BlueHit_3DVFX_Root");
+            hitBurstGo.transform.position = Vector3.zero;
+
+            GameObject hitSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            hitSphere.name = "Hit_3D_ShockSphere";
+            hitSphere.transform.SetParent(hitBurstGo.transform, false);
+            hitSphere.transform.localPosition = Vector3.zero;
+            hitSphere.transform.localScale = Vector3.one * 0.4f;
+            DestroyCollider(hitSphere);
+            hitSphere.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            ParticleSystem hitPs = BuildHitBurstParticles(hitBurstGo.transform);
+            hitBurstGo.SetActive(false);
+
+            // 3. Skill 3 俯冲能量漏斗 (挂载在 player 下)
+            GameObject diveFunnelGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            diveFunnelGo.name = "Skill3_Dive_3DFunnel";
+            diveFunnelGo.transform.SetParent(player.transform, false);
+            diveFunnelGo.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+            diveFunnelGo.transform.localScale = new Vector3(2.8f, 1.5f, 2.8f);
+            DestroyCollider(diveFunnelGo);
+            diveFunnelGo.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+            diveFunnelGo.SetActive(false);
+
+            // 4. Skill 3 蓝色砸向地面 3D 立体特效 (场景根节点)
+            GameObject slamRootGo = new GameObject("Skill3_BlueSlam_3DVFX_Root");
+            slamRootGo.transform.position = Vector3.zero;
+
+            GameObject domeGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            domeGo.name = "Slam_3D_ShockwaveDome";
+            domeGo.transform.SetParent(slamRootGo.transform, false);
+            domeGo.transform.localPosition = new Vector3(0f, 0.05f, 0f);
+            domeGo.transform.localScale = new Vector3(2f, 1f, 2f);
+            DestroyCollider(domeGo);
+            domeGo.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject innerCyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            innerCyl.name = "Slam_3D_InnerWaveCylinder";
+            innerCyl.transform.SetParent(slamRootGo.transform, false);
+            innerCyl.transform.localPosition = new Vector3(0f, 0.4f, 0f);
+            innerCyl.transform.localScale = new Vector3(4.4f, 0.4f, 4.4f);
+            DestroyCollider(innerCyl);
+            innerCyl.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject outerCyl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            outerCyl.name = "Slam_3D_OuterWaveCylinder";
+            outerCyl.transform.SetParent(slamRootGo.transform, false);
+            outerCyl.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            outerCyl.transform.localScale = new Vector3(9.6f, 0.25f, 9.6f);
+            DestroyCollider(outerCyl);
+            outerCyl.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject skyBeam = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            skyBeam.name = "Slam_3D_SkyBeamPillar";
+            skyBeam.transform.SetParent(slamRootGo.transform, false);
+            skyBeam.transform.localPosition = new Vector3(0f, 4.5f, 0f);
+            skyBeam.transform.localScale = new Vector3(2.6f, 4.5f, 2.6f);
+            DestroyCollider(skyBeam);
+            skyBeam.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+
+            GameObject spikesRoot = new GameObject("Slam_3D_CrystalSpikes_Group");
+            spikesRoot.transform.SetParent(slamRootGo.transform, false);
+            spikesRoot.transform.localPosition = Vector3.zero;
+
+            for (int i = 0; i < 12; i++)
+            {
+                float angle = i * (360f / 12f) * Mathf.Deg2Rad;
+                float radius = (i % 2 == 0) ? 2.2f : 3.8f;
+                Vector3 pos = new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                GameObject spike = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                spike.name = $"Crystal_Spike_{i + 1}";
+                spike.transform.SetParent(spikesRoot.transform, false);
+                spike.transform.localPosition = pos + Vector3.up * 0.9f;
+                spike.transform.localRotation = Quaternion.Euler((i % 2 == 0) ? 15f : -18f, i * 30f, (i % 3 == 0) ? 20f : -15f);
+                spike.transform.localScale = new Vector3(0.42f, 1.85f, 0.42f);
+                DestroyCollider(spike);
+                spike.GetComponent<MeshRenderer>().sharedMaterial = vfxMat;
+            }
+
+            ParticleSystem slamPs = BuildSlamBurstParticles(slamRootGo.transform);
+            slamRootGo.SetActive(false);
+
+            var vfxController = player.GetComponent<PterosaurSkillVfxController>();
+            if (vfxController == null) vfxController = player.AddComponent<PterosaurSkillVfxController>();
+
+            vfxController.BindSkill1VfxReferences(
+                dashVfxGo.transform,
+                spearConeGo.transform,
+                innerCoreGo.transform,
+                vortexFront.transform,
+                vortexRear.transform,
+                dashPs,
+                leftTrail,
+                rightTrail,
+                hitBurstGo.transform,
+                hitSphere.transform,
+                hitPs);
+
+            vfxController.BindSkill3VfxReferences(
+                diveFunnelGo.transform,
+                slamRootGo.transform,
+                domeGo.transform,
+                innerCyl.transform,
+                outerCyl.transform,
+                skyBeam.transform,
+                spikesRoot.transform,
+                slamPs);
+
+            if (animBridge != null)
+            {
+                animBridge.BindReferences(pterosaurModel.GetComponent<Animator>(), skillCtrl);
+            }
+
+            var camFollow = Camera.main != null ? Camera.main.GetComponent<MobaCameraFollow>() : null;
+            skillCtrl.BindPterosaurModelAndVfxReferences(animBridge, vfxController, camFollow);
 
             return player;
         }
@@ -1346,6 +1561,411 @@ namespace Moba.Editor
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
                 }
             }
+        }
+
+        private static void EnsurePterosaurAssetsConfigured()
+        {
+            // 1. Texture Atlas
+            var atlasImporter = AssetImporter.GetAtPath(PterosaurAtlasPath) as TextureImporter;
+            if (atlasImporter != null)
+            {
+                bool dirty = false;
+                if (atlasImporter.textureType != TextureImporterType.Default)
+                {
+                    atlasImporter.textureType = TextureImporterType.Default;
+                    dirty = true;
+                }
+                if (atlasImporter.filterMode != FilterMode.Point)
+                {
+                    atlasImporter.filterMode = FilterMode.Point;
+                    dirty = true;
+                }
+                if (atlasImporter.wrapMode != TextureWrapMode.Clamp)
+                {
+                    atlasImporter.wrapMode = TextureWrapMode.Clamp;
+                    dirty = true;
+                }
+                if (dirty)
+                {
+                    atlasImporter.SaveAndReimport();
+                }
+            }
+
+            // 2. Material
+            Texture2D atlasTex = AssetDatabase.LoadAssetAtPath<Texture2D>(PterosaurAtlasPath);
+            Material heroMat = AssetDatabase.LoadAssetAtPath<Material>(PterosaurMatPath);
+            if (heroMat == null)
+            {
+                Shader sh = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                heroMat = new Material(sh);
+                heroMat.name = "Pterosaur_Hero_Mat";
+                if (atlasTex != null)
+                {
+                    if (heroMat.HasProperty("_BaseMap")) heroMat.SetTexture("_BaseMap", atlasTex);
+                    if (heroMat.HasProperty("_MainTex")) heroMat.SetTexture("_MainTex", atlasTex);
+                }
+                heroMat.color = Color.white;
+                if (heroMat.HasProperty("_BaseColor")) heroMat.SetColor("_BaseColor", Color.white);
+                if (heroMat.HasProperty("_Smoothness")) heroMat.SetFloat("_Smoothness", 0.15f);
+                AssetDatabase.CreateAsset(heroMat, PterosaurMatPath);
+            }
+            else if (atlasTex != null)
+            {
+                if (heroMat.HasProperty("_BaseMap") && heroMat.GetTexture("_BaseMap") != atlasTex) heroMat.SetTexture("_BaseMap", atlasTex);
+                if (heroMat.HasProperty("_MainTex") && heroMat.GetTexture("_MainTex") != atlasTex) heroMat.SetTexture("_MainTex", atlasTex);
+                EditorUtility.SetDirty(heroMat);
+            }
+
+            // 3. FBX ModelImporter (Clips & Animation Events)
+            var modelImporter = AssetImporter.GetAtPath(PterosaurFbxPath) as ModelImporter;
+            if (modelImporter != null)
+            {
+                var defaultClips = modelImporter.defaultClipAnimations;
+                if (defaultClips != null && defaultClips.Length > 0)
+                {
+                    var clipList = new List<ModelImporterClipAnimation>();
+                    foreach (var dClip in defaultClips)
+                    {
+                        var clip = new ModelImporterClipAnimation
+                        {
+                            name = dClip.name,
+                            takeName = dClip.takeName,
+                            firstFrame = dClip.firstFrame,
+                            lastFrame = dClip.lastFrame
+                        };
+                        if (clip.name == "idle" || clip.name == "walk" || clip.name == "sprint")
+                        {
+                            clip.loopTime = true;
+                        }
+                        else if (clip.name == "fly_slam")
+                        {
+                            clip.loopTime = false;
+                            var slamEvent = new AnimationEvent
+                            {
+                                functionName = "OnSlamImpact",
+                                time = YunZhongJunLogic.FlySlamImpactTimestamp // 2.40s
+                            };
+                            clip.events = new AnimationEvent[] { slamEvent };
+                        }
+                        clipList.Add(clip);
+                    }
+
+                    bool needsReimport = false;
+                    var currentClips = modelImporter.clipAnimations;
+                    if (currentClips == null || currentClips.Length != clipList.Count)
+                    {
+                        needsReimport = true;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < currentClips.Length; i++)
+                        {
+                            if (currentClips[i].name != clipList[i].name || currentClips[i].loopTime != clipList[i].loopTime)
+                            {
+                                needsReimport = true;
+                                break;
+                            }
+                            if (currentClips[i].name == "fly_slam" && (currentClips[i].events == null || currentClips[i].events.Length == 0))
+                            {
+                                needsReimport = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (needsReimport)
+                    {
+                        modelImporter.clipAnimations = clipList.ToArray();
+                        modelImporter.SaveAndReimport();
+                    }
+                }
+            }
+
+            // 4. AnimatorController
+            AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(PterosaurAnimatorPath);
+            if (controller == null)
+            {
+                controller = AnimatorController.CreateAnimatorControllerAtPath(PterosaurAnimatorPath);
+            }
+
+            EnsureAnimatorParameter(controller, "MoveState", AnimatorControllerParameterType.Int);
+            EnsureAnimatorParameter(controller, "SpeedNormalized", AnimatorControllerParameterType.Float);
+            EnsureAnimatorParameter(controller, "IsFlyingSlam", AnimatorControllerParameterType.Bool);
+
+            var subAssets = AssetDatabase.LoadAllAssetsAtPath(PterosaurFbxPath);
+            AnimationClip idleClip = null, walkClip = null, sprintClip = null, flySlamClip = null;
+            foreach (var a in subAssets)
+            {
+                if (a is AnimationClip clip)
+                {
+                    if (clip.name == "idle") idleClip = clip;
+                    else if (clip.name == "walk") walkClip = clip;
+                    else if (clip.name == "sprint") sprintClip = clip;
+                    else if (clip.name == "fly_slam") flySlamClip = clip;
+                }
+            }
+
+            if (controller.layers.Length > 0)
+            {
+                var rootSm = controller.layers[0].stateMachine;
+                var idleState = FindOrAddState(rootSm, "idle", idleClip);
+                var walkState = FindOrAddState(rootSm, "walk", walkClip);
+                var sprintState = FindOrAddState(rootSm, "sprint", sprintClip);
+                var flySlamState = FindOrAddState(rootSm, "fly_slam", flySlamClip);
+
+                rootSm.defaultState = idleState;
+
+                EnsureTransition(idleState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
+                EnsureTransition(idleState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+
+                EnsureTransition(walkState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
+                EnsureTransition(walkState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+
+                EnsureTransition(sprintState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
+                EnsureTransition(sprintState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
+
+                // AnyState -> fly_slam
+                bool hasAnyToFlySlam = false;
+                foreach (var tr in rootSm.anyStateTransitions)
+                {
+                    if (tr.destinationState == flySlamState)
+                    {
+                        hasAnyToFlySlam = true;
+                        break;
+                    }
+                }
+                if (!hasAnyToFlySlam)
+                {
+                    var anyTr = rootSm.AddAnyStateTransition(flySlamState);
+                    anyTr.canTransitionToSelf = false;
+                    anyTr.hasExitTime = false;
+                    anyTr.duration = 0.08f;
+                    anyTr.AddCondition(AnimatorConditionMode.If, 0, "IsFlyingSlam");
+                }
+
+                // fly_slam -> idle
+                bool hasFlySlamToIdle = false;
+                foreach (var tr in flySlamState.transitions)
+                {
+                    if (tr.destinationState == idleState)
+                    {
+                        hasFlySlamToIdle = true;
+                        break;
+                    }
+                }
+                if (!hasFlySlamToIdle)
+                {
+                    var tr = flySlamState.AddTransition(idleState);
+                    tr.hasExitTime = false;
+                    tr.duration = 0.15f;
+                    tr.AddCondition(AnimatorConditionMode.IfNot, 0, "IsFlyingSlam");
+                }
+            }
+
+            EditorUtility.SetDirty(controller);
+        }
+
+        private static void EnsureAnimatorParameter(AnimatorController controller, string paramName, AnimatorControllerParameterType type)
+        {
+            foreach (var p in controller.parameters)
+            {
+                if (p.name == paramName && p.type == type) return;
+            }
+            controller.AddParameter(paramName, type);
+        }
+
+        private static AnimatorState FindOrAddState(AnimatorStateMachine sm, string name, Motion motion)
+        {
+            foreach (var childState in sm.states)
+            {
+                if (childState.state.name == name)
+                {
+                    if (motion != null) childState.state.motion = motion;
+                    return childState.state;
+                }
+            }
+            var state = sm.AddState(name);
+            state.motion = motion;
+            return state;
+        }
+
+        private static void EnsureTransition(AnimatorState from, AnimatorState to, string paramName, AnimatorConditionMode mode, float threshold, float duration)
+        {
+            foreach (var tr in from.transitions)
+            {
+                if (tr.destinationState == to) return;
+            }
+            var t = from.AddTransition(to);
+            t.hasExitTime = false;
+            t.duration = duration;
+            t.AddCondition(mode, threshold, paramName);
+        }
+
+        private static Material GetOrCreateSkillVfxMaterial()
+        {
+            Material mat = AssetDatabase.LoadAssetAtPath<Material>(SkillVfxMatPath);
+            if (mat == null)
+            {
+                Shader sh = Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Universal Render Pipeline/Unlit")
+                    ?? Shader.Find("Standard");
+                mat = new Material(sh);
+                mat.name = "Pterosaur_Skill_Vfx";
+                Color col = new Color(0.22f, 0.78f, 1f, 0.85f);
+                mat.color = col;
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", col);
+                if (mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", new Color(0.12f, 0.55f, 0.95f) * 1.5f);
+                }
+                AssetDatabase.CreateAsset(mat, SkillVfxMatPath);
+            }
+            return mat;
+        }
+
+        private static void DestroyCollider(GameObject go)
+        {
+            var col = go.GetComponent<Collider>();
+            if (col != null) Object.DestroyImmediate(col);
+        }
+
+        private static TrailRenderer CreateWingTrail(Transform parent, string name, Vector3 localPos, Material mat)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+
+            var tr = go.AddComponent<TrailRenderer>();
+            tr.time = 0.28f;
+            tr.startWidth = 0.45f;
+            tr.endWidth = 0.04f;
+            tr.material = mat;
+            Gradient grad = new Gradient();
+            grad.SetKeys(
+                new GradientColorKey[]
+                {
+                    new GradientColorKey(new Color(0.35f, 0.92f, 1f), 0f),
+                    new GradientColorKey(new Color(0.12f, 0.55f, 1f), 1f)
+                },
+                new GradientAlphaKey[]
+                {
+                    new GradientAlphaKey(0.92f, 0f),
+                    new GradientAlphaKey(0f, 1f)
+                });
+            tr.colorGradient = grad;
+            tr.emitting = false;
+            return tr;
+        }
+
+        private static ParticleSystem BuildDashParticles(Transform parent)
+        {
+            GameObject psGo = new GameObject("Dash_Blue_Particles");
+            psGo.transform.SetParent(parent, false);
+            psGo.transform.localPosition = new Vector3(0f, 0f, 0.5f);
+            psGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+            var ps = psGo.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.loop = true;
+            main.duration = 1.0f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.2f, 0.35f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(10f, 18f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.25f, 0.85f, 1f, 0.95f), new Color(0.1f, 0.45f, 1f, 0.9f));
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 80f;
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 12f;
+            shape.radius = 0.5f;
+
+            var renderer = psGo.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.sharedMaterial = GetOrCreateParticleMaterial(null);
+            return ps;
+        }
+
+        private static ParticleSystem BuildHitBurstParticles(Transform parent)
+        {
+            GameObject psGo = new GameObject("Hit_Blue_Burst_Particles");
+            psGo.transform.SetParent(parent, false);
+            psGo.transform.localPosition = Vector3.zero;
+
+            var ps = psGo.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.loop = false;
+            main.duration = 0.5f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.45f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(6f, 14f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.35f, 0.95f, 1f, 0.95f), new Color(0.15f, 0.55f, 1f, 0.9f));
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 35) });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.4f;
+
+            var renderer = psGo.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.sharedMaterial = GetOrCreateParticleMaterial(null);
+            return ps;
+        }
+
+        private static ParticleSystem BuildSlamBurstParticles(Transform parent)
+        {
+            GameObject psGo = new GameObject("Slam_3D_Burst_Particles");
+            psGo.transform.SetParent(parent, false);
+            psGo.transform.localPosition = new Vector3(0f, 0.1f, 0f);
+
+            var ps = psGo.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.loop = false;
+            main.duration = 1.0f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.85f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(8f, 22f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.65f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.45f, 0.95f, 1f, 0.95f), new Color(0.12f, 0.45f, 1f, 0.85f));
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            var emission = ps.emission;
+            emission.enabled = true;
+            emission.rateOverTime = 0f;
+            emission.SetBursts(new ParticleSystem.Burst[]
+            {
+                new ParticleSystem.Burst(0f, 75),
+                new ParticleSystem.Burst(0.08f, 45)
+            });
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Hemisphere;
+            shape.radius = 2.4f;
+
+            var renderer = psGo.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.sharedMaterial = GetOrCreateParticleMaterial(null);
+            return ps;
         }
     }
 }

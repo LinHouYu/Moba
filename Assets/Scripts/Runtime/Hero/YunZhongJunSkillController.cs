@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Moba.Runtime.Movement;
 using Moba.Runtime.Combat;
+using Moba.Runtime.CameraSystem;
 
 namespace Moba.Runtime.Hero
 {
@@ -79,10 +80,11 @@ namespace Moba.Runtime.Hero
         [SerializeField] [Range(0.4f, 3f)] private float skill2BuffDuration = 1.5f;
         [SerializeField] [Range(10f, 100f)] private float skill2ParryBreathGain = 50f;
 
-        [Header("Skill 3: 风雷引 (大招内外双圈 / 内圈击飞叠印记 / 粒子抓击雨)")]
+        [Header("Skill 3: 风雷引 (大招内外双圈 / 内圈击飞叠印记 / 粒子抓击雨 / FlySlam T=2.40s)")]
         [SerializeField] [Range(2f, 30f)] private float skill3Cooldown = 10.0f;
-        [SerializeField] [Range(0.5f, 2.5f)] private float ultAscentDuration = 1.15f;
-        [SerializeField] [Range(2f, 7f)] private float ultSkyHeight = 4.2f;
+        [Tooltip("fly_slam 动画 T = 2.40s (第 72 帧) 为巨爪与双臂暴力砸地的瞬间")]
+        [SerializeField] [Range(0.5f, 3.6f)] private float ultAscentDuration = YunZhongJunLogic.FlySlamImpactTimestamp;
+        [SerializeField] [Range(1.5f, 7f)] private float ultSkyHeight = 2.4f;
         [Tooltip("大招内圈半径：仅内圈可击飞敌人并叠加1层抓击印记")]
         [SerializeField] [Range(1f, 4f)] private float ultInnerRadius = 2.2f;
         [Tooltip("大招外圈半径：外圈砸不晕敌人")]
@@ -94,6 +96,11 @@ namespace Moba.Runtime.Hero
         [SerializeField] [Range(10f, 100f)] private float ultBaseBreathGain = 50f;
         [SerializeField] [Range(0.5f, 4f)] private float ultFeatherRainDuration = 1.8f;
         [SerializeField] private float ultRainTickDamage = 65f;
+
+        [Header("Pterosaur 3D Model, Animation & 3D VFX References")]
+        [SerializeField] private PterosaurAnimatorBridge animatorBridge;
+        [SerializeField] private PterosaurSkillVfxController vfxController;
+        [SerializeField] private MobaCameraFollow mainCameraFollow;
 
         [Header("Scene Visual & UI References")]
         [SerializeField] private Transform attackRangeIndicator;
@@ -144,6 +151,7 @@ namespace Moba.Runtime.Hero
 
         private bool isInUltAscent = false;
         private float ultAscentTimer = 0f;
+        private float flySlamAnimRemaining = 0f;
         private bool isFeatherRainActive = false;
         private float featherRainTimer = 0f;
         private float featherRainTickTimer = 0f;
@@ -188,6 +196,16 @@ namespace Moba.Runtime.Hero
         public bool CanCastSkill1 => currentForm == YunZhongJunForm.Flying && skill1CdRemaining <= 0f && !isInUltAscent;
         public bool CanCastSkill2 => skill2CdRemaining <= 0f && !isInUltAscent;
         public bool CanCastSkill3 => skill3CdRemaining <= 0f && !isInUltAscent;
+
+        public void BindPterosaurModelAndVfxReferences(
+            PterosaurAnimatorBridge animBridge,
+            PterosaurSkillVfxController skillVfx,
+            MobaCameraFollow camFollow)
+        {
+            animatorBridge = animBridge;
+            vfxController = skillVfx;
+            mainCameraFollow = camFollow;
+        }
 
         public void BindVisualAndUIReferences(
             Transform intimidationGroup,
@@ -257,6 +275,12 @@ namespace Moba.Runtime.Hero
 
         private void AutoResolveSceneChildren()
         {
+            if (animatorBridge == null) animatorBridge = GetComponentInChildren<PterosaurAnimatorBridge>(true);
+            if (vfxController == null) vfxController = GetComponentInChildren<PterosaurSkillVfxController>(true);
+            if (mainCameraFollow == null && UnityEngine.Camera.main != null)
+            {
+                mainCameraFollow = UnityEngine.Camera.main.GetComponent<MobaCameraFollow>();
+            }
             if (skill2ParryAura == null) skill2ParryAura = transform.Find("Skill2_ParryAura");
             if (ultCirclesRoot == null) ultCirclesRoot = transform.Find("Ultimate_Circles_Group");
             if (ultCirclesRoot != null)
@@ -437,9 +461,11 @@ namespace Moba.Runtime.Hero
 
             skill1State = Skill1State.Diving;
             skill1StateTimer = 0f;
+            flySlamAnimRemaining = 0f;
             PlayAudio(skill1SoundClip);
+            vfxController?.StartSkill1BlueDashVfx();
             heroMovement.SetExternalHorizontalOverride(skill1DiveDir * skill1DiveSpeed, skill1DiveDir);
-            SpawnHeroPopup("天隙鸣·加速俯冲", new Color(0.45f, 0.92f, 1f));
+            SpawnHeroPopup("天隙鸣·蓝色冲刺!", new Color(0.45f, 0.92f, 1f));
             return true;
         }
 
@@ -517,6 +543,9 @@ namespace Moba.Runtime.Hero
             isInUltAscent = true;
             isUntargetable = true;
             ultAscentTimer = 0f;
+            flySlamAnimRemaining = YunZhongJunLogic.FlySlamTotalDuration;
+            animatorBridge?.PlayFlySlamFromStart();
+            vfxController?.SetSkill3DiveFunnelActive(false);
             PlayAudio(ultAscendSoundClip);
 
             SyncRingScales();
@@ -610,8 +639,9 @@ namespace Moba.Runtime.Hero
             // 6. 气息自然增减与飞鸡/走地鸡形态切换
             UpdateBreathAndForm(dt);
 
-            // 7. 同步模型高度（不改变原胶囊体模型，仅通过Y轴偏移呈现飞行/落地/一技能倒飞抬升/大招冲天）
+            // 7. 同步模型高度与翼龙动画状态（idle / walk / sprint / fly_slam）
             UpdateHeroVisualHeightAndSpeed();
+            UpdatePterosaurLocomotionAnimation(dt);
 
             // 8. 提示与飘字更新
             if (transientHeroHintTimer > 0f)
@@ -707,6 +737,7 @@ namespace Moba.Runtime.Hero
                 {
                     // 空放结束，不触发命中后跳与威慑圈
                     skill1State = Skill1State.Idle;
+                    vfxController?.StopSkill1BlueDashVfx();
                     heroMovement.ClearExternalHorizontalOverride();
                 }
             }
@@ -739,6 +770,11 @@ namespace Moba.Runtime.Hero
 
         private void OnSkill1HitTarget(MobaTargetDummy target)
         {
+            // 0. 停止冲刺残影并触发蓝色3D撞击爆裂特效 + 摄像机微微震动！
+            vfxController?.StopSkill1BlueDashVfx();
+            vfxController?.PlaySkill1HitBurstVfx(target.transform.position);
+            TriggerCameraSkill1ImpactShake();
+
             // 1. 造成伤害并叠1层抓击印记
             target.TakeSkillOrAttackDamage(skill1Damage, addClawStacks: 1, customPopupPrefix: "天隙鸣");
 
@@ -771,6 +807,7 @@ namespace Moba.Runtime.Hero
             skill1StateTimer = 0f;
             recoilVerticalOffset = 0f;
             lastAppliedRecoilHoriz = Vector3.zero;
+            vfxController?.StopSkill1BlueDashVfx();
             heroMovement.ClearExternalHorizontalOverride();
         }
 
@@ -841,9 +878,25 @@ namespace Moba.Runtime.Hero
 
         private void UpdateUltimateStateMachine(float dt)
         {
+            if (flySlamAnimRemaining > 0f)
+            {
+                flySlamAnimRemaining = Mathf.Max(0f, flySlamAnimRemaining - dt);
+                // 砸地恢复阶段（T > 2.85s）若玩家推动摇杆移动则允许提前衔接 walk/sprint
+                if (!isInUltAscent && flySlamAnimRemaining < 0.75f && heroMovement != null &&
+                    heroMovement.InputMagnitude >= YunZhongJunLogic.DefaultWalkThreshold)
+                {
+                    flySlamAnimRemaining = 0f;
+                }
+            }
+
             if (isInUltAscent)
             {
                 ultAscentTimer += dt;
+                if (ultAscentTimer >= 1.72f)
+                {
+                    vfxController?.SetSkill3DiveFunnelActive(true);
+                }
+
                 if (ultAscentTimer >= ultAscentDuration)
                 {
                     ExecuteUltimateLanding();
@@ -879,16 +932,32 @@ namespace Moba.Runtime.Hero
             }
         }
 
+        /// <summary>
+        /// FlySlam 核心动画事件回调（T = 2.40s / 第 72 帧）：
+        /// 巨爪与双臂暴力砸地的瞬间，触发蓝色3D立体砸地特效、地面震裂与摄像机微震。
+        /// </summary>
+        public void OnSlamImpact()
+        {
+            if (isInUltAscent)
+            {
+                ExecuteUltimateLanding();
+            }
+        }
+
         private void ExecuteUltimateLanding()
         {
+            if (!isInUltAscent) return;
+
             isInUltAscent = false;
             isUntargetable = false;
             combatRemaining = combatStateDuration;
 
+            vfxController?.SetSkill3DiveFunnelActive(false);
             PlayAudio(ultSlamSoundClip);
 
-            // 手机物理震动（大招风雷引猛烈砸地冲击反馈）
+            // 手机物理震动 + 摄像机微微震动（技能3砸向地面冲击反馈）
             try { Handheld.Vibrate(); } catch { }
+            TriggerCameraSkill3SlamShake();
 
             if (ultCirclesRoot != null)
             {
@@ -897,6 +966,9 @@ namespace Moba.Runtime.Hero
 
             Vector3 landingCenter = new Vector3(transform.position.x, 0f, transform.position.z);
             featherRainCenter = landingCenter;
+
+            // 0. 播放蓝色砸向下面 3D 立体特效（立体冲击波穹顶 + 3D冰晶岩刺 + 立体天柱）
+            vfxController?.PlaySkill3BlueSlamImpactVfx(landingCenter, ultInnerRadius, ultOuterRadius);
 
             // 1. 判定大招内圈与外圈效果
             var dummies = FindObjectsByType<MobaTargetDummy>();
@@ -946,6 +1018,35 @@ namespace Moba.Runtime.Hero
             }
         }
 
+        private void TriggerCameraSkill1ImpactShake()
+        {
+            if (mainCameraFollow == null && UnityEngine.Camera.main != null)
+            {
+                mainCameraFollow = UnityEngine.Camera.main.GetComponent<MobaCameraFollow>();
+            }
+            mainCameraFollow?.TriggerSkill1ImpactShake();
+        }
+
+        private void TriggerCameraSkill3SlamShake()
+        {
+            if (mainCameraFollow == null && UnityEngine.Camera.main != null)
+            {
+                mainCameraFollow = UnityEngine.Camera.main.GetComponent<MobaCameraFollow>();
+            }
+            mainCameraFollow?.TriggerSkill3SlamShake();
+        }
+
+        private void UpdatePterosaurLocomotionAnimation(float dt)
+        {
+            if (animatorBridge == null) return;
+
+            float inputMag = heroMovement != null ? heroMovement.InputMagnitude : 0f;
+            bool isSkill1Diving = (skill1State == Skill1State.Diving);
+            bool isPlayingFlySlam = isInUltAscent || (flySlamAnimRemaining > 0f);
+
+            animatorBridge.UpdateLocomotionAnimation(inputMag, isSkill1Diving, isPlayingFlySlam);
+        }
+
         private void UpdateBreathAndForm(float dt)
         {
             if (isInUltAscent) return;
@@ -992,21 +1093,15 @@ namespace Moba.Runtime.Hero
                 heroMovement.MoveSpeed = currentForm == YunZhongJunForm.Flying ? flyingMoveSpeed : groundedMoveSpeed;
             }
 
-            // 模型 Y 轴高度偏移（保持原胶囊体模型不变）
+            // 翼龙 3D 模型 Y 轴高度偏移（地面待机/四足行走/冲刺贴地 Y=0，一技能倒飞抛物线抬升，大招按 fly_slam 轨迹起飞俯冲砸地）
             float targetYOffset = 0f;
             if (isInUltAscent)
             {
-                float progress = Mathf.Clamp01(ultAscentTimer / 0.25f);
-                targetYOffset = Mathf.Lerp(0.4f, ultSkyHeight, progress);
+                targetYOffset = YunZhongJunLogic.EvaluateFlySlamHeightOffset(ultAscentTimer, ultAscentDuration, ultSkyHeight);
             }
             else if (skill1State == Skill1State.RecoilingBackward)
             {
-                float flyBase = currentForm == YunZhongJunForm.Flying ? 0.35f : 0f;
-                targetYOffset = flyBase + recoilVerticalOffset;
-            }
-            else if (currentForm == YunZhongJunForm.Flying)
-            {
-                targetYOffset = 0.35f + Mathf.Sin(Time.time * 4.2f) * 0.06f;
+                targetYOffset = recoilVerticalOffset;
             }
 
             heroMovement.VisualExtraHeightOffset = targetYOffset;

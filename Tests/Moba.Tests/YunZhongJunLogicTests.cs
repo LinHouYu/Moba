@@ -199,5 +199,83 @@ namespace Moba.Tests
             Assert.That(insideColor.g, Is.GreaterThan(0.5f));
             Assert.That(insideColor.b, Is.LessThan(0.2f));
         }
+
+        [Test]
+        public void PterosaurLocomotion_AnimationStateTransitions_MatchesJoystickAndSkillInputs()
+        {
+            float walkThresh = YunZhongJunLogic.DefaultWalkThreshold; // 0.05
+            float sprintThresh = YunZhongJunLogic.DefaultSprintThreshold; // 0.75
+
+            // 1. No input -> idle
+            var idle = YunZhongJunLogic.EvaluatePterosaurAnimationState(0f, false, false, walkThresh, sprintThresh);
+            Assert.That(idle, Is.EqualTo(PterosaurAnimState.Idle));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(idle), Is.EqualTo("idle"));
+
+            // Below walk threshold -> idle
+            Assert.That(YunZhongJunLogic.EvaluatePterosaurAnimationState(0.04f, false, false, walkThresh, sprintThresh), Is.EqualTo(PterosaurAnimState.Idle));
+
+            // 2. Half drag (0.45) -> walk
+            var walk = YunZhongJunLogic.EvaluatePterosaurAnimationState(0.45f, false, false, walkThresh, sprintThresh);
+            Assert.That(walk, Is.EqualTo(PterosaurAnimState.Walk));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(walk), Is.EqualTo("walk"));
+
+            // 3. Full drag (0.85) -> sprint
+            var sprint = YunZhongJunLogic.EvaluatePterosaurAnimationState(0.85f, false, false, walkThresh, sprintThresh);
+            Assert.That(sprint, Is.EqualTo(PterosaurAnimState.Sprint));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(sprint), Is.EqualTo("sprint"));
+
+            // 4. Skill 1 dash overrides zero input to sprint
+            var dashSprint = YunZhongJunLogic.EvaluatePterosaurAnimationState(0f, isDashingSkill1: true, isPlayingFlySlam: false, walkThresh, sprintThresh);
+            Assert.That(dashSprint, Is.EqualTo(PterosaurAnimState.Sprint));
+
+            // 5. Ultimate fly_slam overrides all other states
+            var flySlam = YunZhongJunLogic.EvaluatePterosaurAnimationState(1.0f, isDashingSkill1: true, isPlayingFlySlam: true, walkThresh, sprintThresh);
+            Assert.That(flySlam, Is.EqualTo(PterosaurAnimState.FlySlam));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(flySlam), Is.EqualTo("fly_slam"));
+        }
+
+        [Test]
+        public void FlySlam_HeightTrajectory_AscendsHoversAndHitsGroundAt2Point4Seconds()
+        {
+            float impactTime = YunZhongJunLogic.FlySlamImpactTimestamp; // 2.40s
+            float apex = 2.4f;
+
+            // Start (t = 0): at ground (0)
+            float h0 = YunZhongJunLogic.EvaluateFlySlamHeightOffset(0f, impactTime, apex);
+            Assert.That(h0, Is.EqualTo(0f).Within(0.001f));
+
+            // Ascent peak (t = 0.8s): reached apex
+            float hPeak = YunZhongJunLogic.EvaluateFlySlamHeightOffset(0.8f, impactTime, apex);
+            Assert.That(hPeak, Is.EqualTo(apex).Within(0.01f));
+
+            // Hovering at high altitude (t = 1.3s): stays near apex
+            float hHover = YunZhongJunLogic.EvaluateFlySlamHeightOffset(1.3f, impactTime, apex);
+            Assert.That(hHover, Is.GreaterThan(apex - 0.2f));
+
+            // Dive impact instant (t = 2.40s): violently lands at ground (0)
+            float hImpact = YunZhongJunLogic.EvaluateFlySlamHeightOffset(impactTime, impactTime, apex);
+            Assert.That(hImpact, Is.EqualTo(0f).Within(0.001f));
+
+            // Ground recovery phase (t = 3.0s): stays at ground (0)
+            float hRecovery = YunZhongJunLogic.EvaluateFlySlamHeightOffset(3.0f, impactTime, apex);
+            Assert.That(hRecovery, Is.EqualTo(0f).Within(0.001f));
+        }
+
+        [Test]
+        public void CameraMicroShake_ActiveAndFinished_BoundedAndDamped()
+        {
+            float duration = 0.25f;
+            float amplitude = 0.15f;
+
+            // When elapsed >= duration, offset must be exactly Vector3.zero
+            Vector3 finishedOffset = YunZhongJunLogic.EvaluateCameraShakeOffset(0.26f, duration, amplitude);
+            Assert.That(finishedOffset, Is.EqualTo(Vector3.zero));
+
+            // When elapsed < duration, offset must be bounded within amplitude
+            Vector3 activeOffset = YunZhongJunLogic.EvaluateCameraShakeOffset(0.05f, duration, amplitude);
+            Assert.That(activeOffset.x, Is.InRange(-amplitude, amplitude));
+            Assert.That(activeOffset.y, Is.InRange(-amplitude, amplitude));
+            Assert.That(activeOffset.z, Is.InRange(-amplitude, amplitude));
+        }
     }
 }
