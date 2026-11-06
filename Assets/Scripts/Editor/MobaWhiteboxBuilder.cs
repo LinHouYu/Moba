@@ -1804,22 +1804,29 @@ namespace Moba.Editor
         private static Material GetOrCreateSkillVfxMaterial()
         {
             Material mat = AssetDatabase.LoadAssetAtPath<Material>(SkillVfxMatPath);
+            Shader sh = Shader.Find("Moba/VfxTransparent")
+                ?? Shader.Find("Universal Render Pipeline/Unlit")
+                ?? Shader.Find("Universal Render Pipeline/Lit");
+
+            Color col = new Color(0.22f, 0.78f, 1f, 0.20f);
+            Color emCol = new Color(0.15f, 0.65f, 1f, 0.6f);
+
             if (mat == null)
             {
-                Shader sh = Shader.Find("Universal Render Pipeline/Lit")
-                    ?? Shader.Find("Universal Render Pipeline/Unlit")
-                    ?? Shader.Find("Standard");
                 mat = new Material(sh);
                 mat.name = "Pterosaur_Skill_Vfx";
-                Color col = new Color(0.22f, 0.78f, 1f, 0.85f);
                 mat.color = col;
                 if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", col);
-                if (mat.HasProperty("_EmissionColor"))
-                {
-                    mat.EnableKeyword("_EMISSION");
-                    mat.SetColor("_EmissionColor", new Color(0.12f, 0.55f, 0.95f) * 1.5f);
-                }
+                if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", emCol);
                 AssetDatabase.CreateAsset(mat, SkillVfxMatPath);
+            }
+            else
+            {
+                if (mat.shader != sh && sh != null) mat.shader = sh;
+                mat.color = col;
+                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", col);
+                if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", emCol);
+                EditorUtility.SetDirty(mat);
             }
             return mat;
         }
@@ -1850,7 +1857,7 @@ namespace Moba.Editor
                 },
                 new GradientAlphaKey[]
                 {
-                    new GradientAlphaKey(0.92f, 0f),
+                    new GradientAlphaKey(0.40f, 0f),
                     new GradientAlphaKey(0f, 1f)
                 });
             tr.colorGradient = grad;
@@ -1875,7 +1882,7 @@ namespace Moba.Editor
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.2f, 0.35f);
             main.startSpeed = new ParticleSystem.MinMaxCurve(10f, 18f);
             main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.25f, 0.85f, 1f, 0.95f), new Color(0.1f, 0.45f, 1f, 0.9f));
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.32f, 0.88f, 1f, 0.30f), new Color(0.15f, 0.55f, 1f, 0.20f));
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
             var emission = ps.emission;
@@ -1910,7 +1917,7 @@ namespace Moba.Editor
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.25f, 0.45f);
             main.startSpeed = new ParticleSystem.MinMaxCurve(6f, 14f);
             main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.5f);
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.35f, 0.95f, 1f, 0.95f), new Color(0.15f, 0.55f, 1f, 0.9f));
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.35f, 0.95f, 1f, 0.30f), new Color(0.15f, 0.55f, 1f, 0.20f));
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
             var emission = ps.emission;
@@ -1945,7 +1952,7 @@ namespace Moba.Editor
             main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.85f);
             main.startSpeed = new ParticleSystem.MinMaxCurve(8f, 22f);
             main.startSize = new ParticleSystem.MinMaxCurve(0.25f, 0.65f);
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.45f, 0.95f, 1f, 0.95f), new Color(0.12f, 0.45f, 1f, 0.85f));
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.42f, 0.95f, 1f, 0.30f), new Color(0.12f, 0.45f, 1f, 0.20f));
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
             var emission = ps.emission;

@@ -41,6 +41,10 @@ namespace Moba.Runtime.Hero
         private bool isSkill1Dashing = false;
         private float skill1DashElapsed = 0f;
 
+        private bool isBasicAttackDashing = false;
+        private float basicAttackDashElapsed = 0f;
+        private float basicAttackDashDuration = 0.22f;
+
         private bool isSkill1HitBurstActive = false;
         private float skill1HitBurstElapsed = 0f;
 
@@ -53,6 +57,7 @@ namespace Moba.Runtime.Hero
         private MaterialPropertyBlock propBlock;
 
         public bool IsSkill1Dashing => isSkill1Dashing;
+        public bool IsBasicAttackDashing => isBasicAttackDashing;
         public bool IsSkill3SlamActive => isSkill3SlamActive;
 
         public void BindSkill1VfxReferences(
@@ -168,6 +173,7 @@ namespace Moba.Runtime.Hero
         public void ResetAllVfxToIdle()
         {
             isSkill1Dashing = false;
+            isBasicAttackDashing = false;
             isSkill1HitBurstActive = false;
             isSkill3Diving = false;
             isSkill3SlamActive = false;
@@ -180,16 +186,21 @@ namespace Moba.Runtime.Hero
             if (skill3SlamVfxRoot != null) skill3SlamVfxRoot.gameObject.SetActive(false);
         }
 
-        // ==================== 技能 1：蓝色冲刺过去 3D 立体特效 ====================
+        // ==================== 技能 1 & 普攻：透明淡蓝色冲刺过去 3D 立体特效 ====================
 
         public void StartSkill1BlueDashVfx()
         {
             isSkill1Dashing = true;
+            isBasicAttackDashing = false;
             skill1DashElapsed = 0f;
 
             if (skill1DashVfxRoot != null)
             {
                 skill1DashVfxRoot.gameObject.SetActive(true);
+                SetRendererAlpha(dashSpearCone3D, new Color(0.25f, 0.82f, 1f, 0.20f));
+                SetRendererAlpha(dashInnerCore3D, new Color(0.45f, 0.92f, 1f, 0.24f));
+                SetRendererAlpha(dashVortexRingFront, new Color(0.35f, 0.88f, 1f, 0.22f));
+                SetRendererAlpha(dashVortexRingRear, new Color(0.20f, 0.75f, 1f, 0.18f));
             }
 
             if (dashBlueParticles != null)
@@ -210,9 +221,48 @@ namespace Moba.Runtime.Hero
             }
         }
 
+        /// <summary>
+        /// 普通攻击 / 爪击冲刺时触发淡蓝色透明 3D 冲刺破空与双翼流光特效（透明度0.2左右，轻快迅猛且不挡模型）
+        /// </summary>
+        public void PlayBasicAttackBlueDashVfx(float duration = 0.22f)
+        {
+            if (isSkill1Dashing) return;
+
+            isBasicAttackDashing = true;
+            basicAttackDashElapsed = 0f;
+            basicAttackDashDuration = Mathf.Max(0.12f, duration);
+
+            if (skill1DashVfxRoot != null)
+            {
+                skill1DashVfxRoot.gameObject.SetActive(true);
+                SetRendererAlpha(dashSpearCone3D, new Color(0.32f, 0.85f, 1f, 0.20f));
+                SetRendererAlpha(dashInnerCore3D, new Color(0.52f, 0.95f, 1f, 0.24f));
+                SetRendererAlpha(dashVortexRingFront, new Color(0.35f, 0.88f, 1f, 0.20f));
+                SetRendererAlpha(dashVortexRingRear, new Color(0.20f, 0.75f, 1f, 0.16f));
+            }
+
+            if (leftWingTrail != null)
+            {
+                leftWingTrail.Clear();
+                leftWingTrail.emitting = true;
+            }
+            if (rightWingTrail != null)
+            {
+                rightWingTrail.Clear();
+                rightWingTrail.emitting = true;
+            }
+
+            if (dashBlueParticles != null)
+            {
+                dashBlueParticles.Clear();
+                dashBlueParticles.Play(true);
+            }
+        }
+
         public void StopSkill1BlueDashVfx()
         {
             isSkill1Dashing = false;
+            isBasicAttackDashing = false;
 
             if (skill1DashVfxRoot != null)
             {
@@ -241,10 +291,11 @@ namespace Moba.Runtime.Hero
                 skill1HitBurstRoot.gameObject.SetActive(true);
             }
 
+            // 保持透明度在 0.2 左右，既能看到半圆/球体冲击波，又能清晰透视角色
             if (skill1HitSphere3D != null)
             {
                 skill1HitSphere3D.localScale = Vector3.one * 0.4f;
-                SetRendererAlpha(skill1HitSphere3D, new Color(0.2f, 0.82f, 1f, 0.9f));
+                SetRendererAlpha(skill1HitSphere3D, new Color(0.22f, 0.78f, 1f, 0.20f));
             }
 
             if (skill1HitParticles != null)
@@ -263,6 +314,10 @@ namespace Moba.Runtime.Hero
 
             if (diveEnergyFunnel3D != null)
             {
+                if (active)
+                {
+                    SetRendererAlpha(diveEnergyFunnel3D, new Color(0.20f, 0.75f, 1f, 0.20f));
+                }
                 diveEnergyFunnel3D.gameObject.SetActive(active);
             }
         }
@@ -283,6 +338,13 @@ namespace Moba.Runtime.Hero
                 skill3SlamVfxRoot.gameObject.SetActive(true);
             }
 
+            // 初始设置半圆特效穹顶为透明 0.2
+            if (slamShockwaveDome3D != null)
+            {
+                slamShockwaveDome3D.localScale = new Vector3(1.2f, 0.8f, 1.2f);
+                SetRendererAlpha(slamShockwaveDome3D, new Color(0.18f, 0.78f, 1f, 0.20f));
+            }
+
             if (slamBurstParticles3D != null)
             {
                 slamBurstParticles3D.Clear();
@@ -297,6 +359,16 @@ namespace Moba.Runtime.Hero
             if (isSkill1Dashing)
             {
                 UpdateSkill1Dash3DVfx(dt);
+            }
+            else if (isBasicAttackDashing)
+            {
+                basicAttackDashElapsed += dt;
+                UpdateSkill1Dash3DVfx(dt);
+                if (basicAttackDashElapsed >= basicAttackDashDuration)
+                {
+                    isBasicAttackDashing = false;
+                    StopSkill1BlueDashVfx();
+                }
             }
 
             if (isSkill1HitBurstActive)
@@ -324,22 +396,26 @@ namespace Moba.Runtime.Hero
             {
                 dashSpearCone3D.localScale = new Vector3(1.35f * pulse, 2.2f, 1.35f * pulse);
                 dashSpearCone3D.Rotate(0f, 720f * dt, 0f, Space.Self);
+                SetRendererAlpha(dashSpearCone3D, new Color(0.25f, 0.82f, 1f, 0.20f));
             }
 
             if (dashInnerCore3D != null)
             {
                 dashInnerCore3D.localScale = new Vector3(0.75f * pulse, 2.4f, 0.75f * pulse);
                 dashInnerCore3D.Rotate(0f, -900f * dt, 0f, Space.Self);
+                SetRendererAlpha(dashInnerCore3D, new Color(0.45f, 0.92f, 1f, 0.24f));
             }
 
             if (dashVortexRingFront != null)
             {
                 dashVortexRingFront.Rotate(0f, 0f, 840f * dt, Space.Self);
+                SetRendererAlpha(dashVortexRingFront, new Color(0.35f, 0.88f, 1f, 0.22f));
             }
 
             if (dashVortexRingRear != null)
             {
                 dashVortexRingRear.Rotate(0f, 0f, -680f * dt, Space.Self);
+                SetRendererAlpha(dashVortexRingRear, new Color(0.20f, 0.75f, 1f, 0.18f));
             }
         }
 
@@ -348,11 +424,12 @@ namespace Moba.Runtime.Hero
             skill1HitBurstElapsed += dt;
             float t = Mathf.Clamp01(skill1HitBurstElapsed / Mathf.Max(0.05f, skill1HitBurstDuration));
 
+            // 核心要求：半圆/球体冲击波特效透明度在 0.2 左右，透视角色完全可见
             if (skill1HitSphere3D != null)
             {
                 float scale = Mathf.Lerp(0.5f, 3.8f, 1f - (1f - t) * (1f - t));
                 skill1HitSphere3D.localScale = new Vector3(scale, scale, scale);
-                float alpha = (1f - t) * 0.85f;
+                float alpha = (1f - t) * 0.20f;
                 SetRendererAlpha(skill1HitSphere3D, new Color(0.18f, 0.82f, 1f, alpha));
             }
 
@@ -373,7 +450,7 @@ namespace Moba.Runtime.Hero
             float t = Mathf.Clamp01(skill3SlamElapsed / duration);
             float easeOut = 1f - (1f - t) * (1f - t);
 
-            // 1. 3D 蓝色立体冲击波穹顶扩散 (Slam_3D_ShockwaveDome)
+            // 1. 核心要求：3D 蓝色立体半圆/穹顶冲击波 (Slam_3D_ShockwaveDome) 透明度在 0.2 左右，能看到冲击波也能看到角色！
             if (slamShockwaveDome3D != null)
             {
                 float domeProgress = Mathf.Clamp01(skill3SlamElapsed / (duration * 0.55f));
@@ -381,8 +458,8 @@ namespace Moba.Runtime.Hero
                 float diameter = Mathf.Lerp(1.2f, activeOuterRadius * 2.05f, domeEase);
                 float height = Mathf.Lerp(0.8f, 3.4f, domeEase);
                 slamShockwaveDome3D.localScale = new Vector3(diameter, height, diameter);
-                float domeAlpha = Mathf.Clamp01(1f - domeProgress) * 0.65f;
-                SetRendererAlpha(slamShockwaveDome3D, new Color(0.15f, 0.72f, 1f, domeAlpha));
+                float domeAlpha = Mathf.Clamp01(1f - domeProgress) * 0.20f;
+                SetRendererAlpha(slamShockwaveDome3D, new Color(0.18f, 0.78f, 1f, domeAlpha));
             }
 
             // 2. 3D 内圈立体气浪圆筒 (Slam_3D_InnerWaveCylinder)
@@ -393,7 +470,7 @@ namespace Moba.Runtime.Hero
                 float h = Mathf.Lerp(1.8f, 0.25f, innerProgress);
                 slamInnerWaveCylinder3D.localPosition = new Vector3(0f, h * 0.5f, 0f);
                 slamInnerWaveCylinder3D.localScale = new Vector3(d, h * 0.5f, d);
-                float alpha = (1f - innerProgress) * 0.82f;
+                float alpha = (1f - innerProgress) * 0.22f;
                 SetRendererAlpha(slamInnerWaveCylinder3D, new Color(0.38f, 0.92f, 1f, alpha));
             }
 
@@ -405,7 +482,7 @@ namespace Moba.Runtime.Hero
                 float h = Mathf.Lerp(1.3f, 0.18f, outerProgress);
                 slamOuterWaveCylinder3D.localPosition = new Vector3(0f, h * 0.5f, 0f);
                 slamOuterWaveCylinder3D.localScale = new Vector3(d, h * 0.5f, d);
-                float alpha = (1f - outerProgress) * 0.72f;
+                float alpha = (1f - outerProgress) * 0.18f;
                 SetRendererAlpha(slamOuterWaveCylinder3D, new Color(0.12f, 0.62f, 1f, alpha));
             }
 
@@ -416,11 +493,11 @@ namespace Moba.Runtime.Hero
                 float width = Mathf.Lerp(2.6f, 0.15f, beamProgress);
                 slamSkyBeamPillar3D.localPosition = new Vector3(0f, 4.5f, 0f);
                 slamSkyBeamPillar3D.localScale = new Vector3(width, 4.5f, width);
-                float beamAlpha = (1f - beamProgress) * 0.88f;
+                float beamAlpha = (1f - beamProgress) * 0.22f;
                 SetRendererAlpha(slamSkyBeamPillar3D, new Color(0.48f, 0.95f, 1f, beamAlpha));
             }
 
-            // 5. 3D 破地蓝色能量冰晶刺簇 (12根立体斜插晶柱从地面猛烈刺出再收回)
+            // 5. 3D 破地蓝色能量冰晶刺簇 (12根立体斜插晶柱从地面破出，透明蓝色 ~0.25)
             if (slamCrystalSpikesRoot != null)
             {
                 float spikeScaleY;
@@ -438,6 +515,12 @@ namespace Moba.Runtime.Hero
                 }
 
                 slamCrystalSpikesRoot.localScale = new Vector3(1f, spikeScaleY, 1f);
+                float spikeAlpha = Mathf.Clamp01(spikeScaleY) * 0.25f;
+                Color spikeCol = new Color(0.22f, 0.78f, 1f, spikeAlpha);
+                foreach (Transform child in slamCrystalSpikesRoot)
+                {
+                    SetRendererAlpha(child, spikeCol);
+                }
             }
 
             if (t >= 1f)

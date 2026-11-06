@@ -379,6 +379,9 @@ namespace Moba.Runtime.Hero
             attackCdRemaining = attackCooldown;
             PlayAudio(attackSoundClip);
 
+            // 触发普通攻击冲刺淡蓝色 3D 炫酷破空与流光特效
+            vfxController?.PlayBasicAttackBlueDashVfx(0.22f);
+
             MobaTargetDummy target = FindNearestDummy(
                 currentForm == YunZhongJunForm.Flying ? flyingAttackRange + 1.2f : groundedAttackRange);
 

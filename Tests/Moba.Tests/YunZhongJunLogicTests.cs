@@ -277,5 +277,25 @@ namespace Moba.Tests
             Assert.That(activeOffset.y, Is.InRange(-amplitude, amplitude));
             Assert.That(activeOffset.z, Is.InRange(-amplitude, amplitude));
         }
+
+        [Test]
+        public void ShockwaveAndDashVfx_TransparencyAround0Point2_EnsuresVisibilityOfCharacter()
+        {
+            // 1. 冲击波/半圆穹顶特效峰值透明度在 0.20 左右，绝不遮挡角色
+            float startAlpha = YunZhongJunLogic.EvaluateShockwaveDomeAlpha(0f, 0.20f);
+            Assert.That(startAlpha, Is.EqualTo(0.20f).Within(0.001f));
+
+            float midAlpha = YunZhongJunLogic.EvaluateShockwaveDomeAlpha(0.5f, 0.20f);
+            Assert.That(midAlpha, Is.EqualTo(0.10f).Within(0.001f));
+
+            float endAlpha = YunZhongJunLogic.EvaluateShockwaveDomeAlpha(1.0f, 0.20f);
+            Assert.That(endAlpha, Is.EqualTo(0f).Within(0.001f));
+
+            // 2. 普通攻击与技能冲刺透明淡蓝色颜色计算 (透明度 0.2 左右，淡蓝色)
+            Color vfxColor = YunZhongJunLogic.EvaluateTransparentVfxColor(0.20f, isLightBlue: true);
+            Assert.That(vfxColor.a, Is.EqualTo(0.20f).Within(0.01f));
+            Assert.That(vfxColor.b, Is.GreaterThan(0.9f));
+            Assert.That(vfxColor.r, Is.LessThan(0.35f));
+        }
     }
 }

@@ -419,5 +419,25 @@ namespace Moba.Runtime.Hero
 
             return new Vector3(offsetX, offsetY, offsetZ);
         }
+
+        /// <summary>
+        /// 技能1与技能3冲击波/半圆穹顶特效透明度计算（保持在 0.20 左右，玩家既能看清冲击波又能看清角色）。
+        /// </summary>
+        public static float EvaluateShockwaveDomeAlpha(float progress, float peakAlpha = 0.20f)
+        {
+            float norm = Mathf.Clamp01(progress);
+            return (1f - norm) * Mathf.Clamp01(peakAlpha);
+        }
+
+        /// <summary>
+        /// 普通攻击与技能冲刺特效透明淡蓝色计算（透明度 0.2 左右，透光不遮挡角色）。
+        /// </summary>
+        public static Color EvaluateTransparentVfxColor(float alpha = 0.20f, bool isLightBlue = true)
+        {
+            float safeAlpha = Mathf.Clamp(alpha, 0.05f, 0.35f);
+            return isLightBlue 
+                ? new Color(0.25f, 0.82f, 1f, safeAlpha)
+                : new Color(0.18f, 0.72f, 1f, safeAlpha);
+        }
     }
 }
