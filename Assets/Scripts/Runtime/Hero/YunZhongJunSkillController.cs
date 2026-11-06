@@ -388,6 +388,11 @@ namespace Moba.Runtime.Hero
                 FaceTowards(target.transform.position);
                 combatRemaining = combatStateDuration;
 
+                // 核心规则：攻击敌人的时候角色在移动的话，只要攻击动画没有播放完毕，准星必须持续锁定看着敌人；
+                // 只有动画结束后才可以解开准星恢复跟随移动方向自由旋转。
+                float attackDuration = animatorBridge != null ? animatorBridge.AttackAnimDuration : YunZhongJunLogic.DefaultAttackClawDuration;
+                heroMovement?.SetFacingLockTarget(target.transform, attackDuration);
+
                 if (currentForm == YunZhongJunForm.Flying)
                 {
                     // 飞鸡近战贴身微追击手感 + 叠1层抓击印记 + 回复少量气息维持飞行
@@ -559,6 +564,7 @@ namespace Moba.Runtime.Hero
             isUntargetable = true;
             ultAscentTimer = 0f;
             flySlamAnimRemaining = YunZhongJunLogic.FlySlamTotalDuration;
+            heroMovement?.ClearFacingLock();
             animatorBridge?.PlayFlySlamFromStart();
             vfxController?.SetSkill3DiveFunnelActive(false);
             PlayAudio(ultAscendSoundClip);

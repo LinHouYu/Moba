@@ -371,5 +371,51 @@ namespace Moba.Tests
                 isAttacking: false);
             Assert.That(normalIdle, Is.EqualTo(PterosaurAnimState.Idle));
         }
+
+        [Test]
+        public void AttackMove_FacingLockAndMovementDirection_Verified()
+        {
+            // 1. 准星锁定规则：攻击期间若动画未播放完且有目标，必须锁定；动画播放完毕后解除锁定
+            Assert.That(YunZhongJunLogic.ShouldLockFacingToTarget(isAttackAnimPlaying: true, hasTarget: true), Is.True);
+            Assert.That(YunZhongJunLogic.ShouldLockFacingToTarget(isAttackAnimPlaying: false, hasTarget: true), Is.False);
+            Assert.That(YunZhongJunLogic.ShouldLockFacingToTarget(isAttackAnimPlaying: true, hasTarget: false), Is.False);
+            Assert.That(YunZhongJunLogic.ShouldLockFacingToTarget(isAttackAnimPlaying: false, hasTarget: false), Is.False);
+
+            // 2. 锁定敌人角度计算验证
+            Vector3 heroPos = new Vector3(0f, 0f, 0f);
+            float angleNorth = YunZhongJunLogic.CalculateLockedFacingAngle(heroPos, new Vector3(0f, 0f, 5f));
+            Assert.That(angleNorth, Is.EqualTo(0f).Within(0.01f));
+
+            float angleEast = YunZhongJunLogic.CalculateLockedFacingAngle(heroPos, new Vector3(5f, 0f, 0f));
+            Assert.That(angleEast, Is.EqualTo(90f).Within(0.01f));
+
+            float angleSouth = YunZhongJunLogic.CalculateLockedFacingAngle(heroPos, new Vector3(0f, 0f, -5f));
+            Assert.That(angleSouth, Is.EqualTo(180f).Within(0.01f));
+
+            float angleWest = YunZhongJunLogic.CalculateLockedFacingAngle(heroPos, new Vector3(-5f, 0f, 0f));
+            Assert.That(angleWest, Is.EqualTo(270f).Within(0.01f));
+
+            // 3. MOBA 走A位移向量计算：即使面向敌人（东），若玩家拉动摇杆向南走，移动位移必须向南
+            Vector3 inputSouth = new Vector3(0f, 0f, -1f);
+            float speed = 6.8f;
+            Vector3 vel = YunZhongJunLogic.CalculateMobaMovementVelocity(
+                inputSouth,
+                speed,
+                hasExternalOverride: false,
+                externalVelocity: Vector3.zero);
+
+            Assert.That(vel.x, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(vel.z, Is.EqualTo(-speed).Within(0.001f));
+
+            // 4. 技能冲刺位移覆盖最高优先级
+            Vector3 diveOverride = new Vector3(12f, 0f, 0f);
+            Vector3 overrideVel = YunZhongJunLogic.CalculateMobaMovementVelocity(
+                inputSouth,
+                speed,
+                hasExternalOverride: true,
+                externalVelocity: diveOverride);
+
+            Assert.That(overrideVel, Is.EqualTo(diveOverride));
+        }
     }
 }

@@ -498,5 +498,52 @@ namespace Moba.Runtime.Hero
 
             return distanceToTarget > minDashDistance && distanceToTarget <= maxDashDistance;
         }
+
+        /// <summary>
+        /// 判断是否应该锁定面向目标：
+        /// 规则：攻击期间若动画未播放完毕（isAttackAnimPlaying == true）且存在目标时，角色必须持续锁定准星看向敌人；
+        /// 只有动画完全结束后（isAttackAnimPlaying == false）才能解除准星锁定，恢复跟随移动方向自由转向。
+        /// </summary>
+        public static bool ShouldLockFacingToTarget(bool isAttackAnimPlaying, bool hasTarget)
+        {
+            return isAttackAnimPlaying && hasTarget;
+        }
+
+        /// <summary>
+        /// 计算锁定敌人的平面 Y 轴朝向角度（0~360度）。
+        /// </summary>
+        public static float CalculateLockedFacingAngle(Vector3 heroPos, Vector3 targetPos)
+        {
+            Vector3 diff = targetPos - heroPos;
+            diff.y = 0f;
+            if (diff.sqrMagnitude < 0.0001f) return 0f;
+            float angle = Mathf.Atan2(diff.x, diff.z) * Mathf.Rad2Deg;
+            if (angle < 0f) angle += 360f;
+            return angle;
+        }
+
+        /// <summary>
+        /// 计算 MOBA 角色移动水平位移向量：
+        /// 当准星锁定敌人时，角色位移方向必须跟随摇杆输入方向（inputMoveDirection），而非被锁定的身体朝向强制拉扯。
+        /// </summary>
+        public static Vector3 CalculateMobaMovementVelocity(
+            Vector3 inputMoveDirection,
+            float horizontalSpeed,
+            bool hasExternalOverride,
+            Vector3 externalVelocity)
+        {
+            if (hasExternalOverride)
+            {
+                return externalVelocity;
+            }
+
+            Vector3 flatDir = new Vector3(inputMoveDirection.x, 0f, inputMoveDirection.z);
+            if (flatDir.sqrMagnitude > 0.0001f)
+            {
+                flatDir.Normalize();
+            }
+
+            return flatDir * Mathf.Max(0f, horizontalSpeed);
+        }
     }
 }

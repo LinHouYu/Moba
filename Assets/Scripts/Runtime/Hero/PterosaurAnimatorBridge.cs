@@ -31,9 +31,9 @@ namespace Moba.Runtime.Hero
         [SerializeField] [Range(0.02f, 0.35f)] private float crossFadeDuration = 0.12f;
 
         [Header("Attack Animation Settings (Inspector Tunable)")]
-        [Tooltip("利爪攻击动画总持续时长（秒，默认 0.42s 普攻动作周期）")]
-        [SerializeField] [Range(0.2f, 1.0f)] private float attackAnimDuration = 0.42f;
-        [Tooltip("攻击前摇保护时长（秒）：前摇期间确保撕抓动作展现，超过此阈值后可通过移动走A取消后摇")]
+        [Tooltip("利爪攻击动画总持续时长（秒，默认 0.85s 为 FBX attack_claw 原生完整周期）")]
+        [SerializeField] [Range(0.2f, 1.5f)] private float attackAnimDuration = YunZhongJunLogic.DefaultAttackClawDuration;
+        [Tooltip("攻击前摇保护时长（秒）：前摇期间确保撕抓动作展现")]
         [SerializeField] [Range(0.05f, 0.4f)] private float attackWindupDuration = 0.20f;
 
         [Header("Live Debug State (Read-Only)")]
@@ -48,6 +48,7 @@ namespace Moba.Runtime.Hero
         public float WalkThreshold => walkThreshold;
         public float SprintThreshold => sprintThreshold;
         public float AttackAnimDuration => attackAnimDuration;
+        public float AttackAnimRemaining => attackAnimRemaining;
         public float AttackWindupDuration => attackWindupDuration;
         public bool IsAttackingAnimationPlaying => attackAnimRemaining > 0f;
 
@@ -104,9 +105,9 @@ namespace Moba.Runtime.Hero
                 attackAnimRemaining -= Time.deltaTime;
             }
 
-            // 走A取消后摇逻辑：在前摇保护期（attackWindupDuration）后，若玩家输入大幅移动，则允许提前取消后摇切入走路/冲刺
-            bool inWindup = (attackAnimDuration - attackAnimRemaining) < attackWindupDuration;
-            bool isAttacking = attackAnimRemaining > 0f && (inWindup || joystickMagnitude < walkThreshold);
+            // 核心规则：攻击敌人期间若动画未播放完，动画必须持续播放 AttackClaw，角色准星锁定敌人；
+            // 只有动画完全结束后，才解除攻击动作恢复行走/待机与自由朝向。
+            bool isAttacking = attackAnimRemaining > 0f;
 
             PterosaurAnimState desiredState = YunZhongJunLogic.EvaluatePterosaurAnimationState(
                 joystickMagnitude,

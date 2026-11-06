@@ -47,6 +47,50 @@ namespace Moba.Runtime.Movement
         private Vector3 externalHorizontalVelocity = Vector3.zero;
         private float visualExtraHeightOffset = 0f;
 
+        [Header("Aim Lock Tracking (Read-Only)")]
+        [SerializeField] private Transform lockFacingTarget;
+        private Vector3? lockFacingWorldPosition;
+        [SerializeField] private float lockFacingDurationRemaining = 0f;
+
+        public bool IsFacingLocked => lockFacingDurationRemaining > 0f && (lockFacingTarget != null || lockFacingWorldPosition.HasValue);
+        public Transform CurrentFacingTarget => lockFacingTarget;
+
+        public void SetFacingLockTarget(Transform target, float duration)
+        {
+            lockFacingTarget = target;
+            lockFacingDurationRemaining = Mathf.Max(0f, duration);
+            if (target != null)
+            {
+                lockFacingWorldPosition = target.position;
+                Vector3 toTarget = target.position - transform.position;
+                toTarget.y = 0f;
+                if (toTarget.sqrMagnitude > 0.0001f)
+                {
+                    transform.rotation = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
+                }
+            }
+        }
+
+        public void SetFacingLockPosition(Vector3 worldPos, float duration)
+        {
+            lockFacingWorldPosition = worldPos;
+            lockFacingTarget = null;
+            lockFacingDurationRemaining = Mathf.Max(0f, duration);
+            Vector3 toTarget = worldPos - transform.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > 0.0001f)
+            {
+                transform.rotation = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
+            }
+        }
+
+        public void ClearFacingLock()
+        {
+            lockFacingTarget = null;
+            lockFacingWorldPosition = null;
+            lockFacingDurationRemaining = 0f;
+        }
+
         public float MoveSpeed
         {
             get => moveSpeed;
@@ -71,6 +115,7 @@ namespace Moba.Runtime.Movement
 
         public void SetExternalHorizontalOverride(Vector3 worldHorizontalVelocity, Vector3? facingDir = null)
         {
+            ClearFacingLock();
             hasExternalDisplacementOverride = true;
             externalHorizontalVelocity = new Vector3(worldHorizontalVelocity.x, 0f, worldHorizontalVelocity.z);
             if (facingDir.HasValue)
@@ -259,14 +304,48 @@ namespace Moba.Runtime.Movement
                 deceleration,
                 dt);
 
-            // 2. Update rotation if input is active and not locked by skill displacement
-            if (!hasExternalDisplacementOverride && inputMagnitude > 0.01f)
+            // 2. Update rotation and facing:
+            // 核心规则：攻击敌人期间若动画未播放完，准星必须持续锁定看着敌人；
+            // 只有攻击动画结束后，才能解开准星并根据移动方向自由旋转身体。
+            if (lockFacingDurationRemaining > 0f)
+            {
+                lockFacingDurationRemaining -= dt;
+            }
+
+            bool isAimLocked = lockFacingDurationRemaining > 0f && (lockFacingTarget != null || lockFacingWorldPosition.HasValue);
+            if (!isAimLocked)
+            {
+                lockFacingTarget = null;
+                lockFacingWorldPosition = null;
+            }
+
+            if (isAimLocked && !hasExternalDisplacementOverride)
+            {
+                Vector3 targetPos = lockFacingTarget != null ? lockFacingTarget.position : lockFacingWorldPosition.Value;
+                Vector3 lookDir = targetPos - transform.position;
+                lookDir.y = 0f;
+                if (lookDir.sqrMagnitude > 0.0001f)
+                {
+                    float targetAngle = Mathf.Atan2(lookDir.x, lookDir.z) * Mathf.Rad2Deg;
+                    if (targetAngle < 0f) targetAngle += 360f;
+                    float newAngle = MobaMovementMath.RotateTowardsAngle(transform.eulerAngles.y, targetAngle, turnSpeed * 3f, dt);
+                    transform.rotation = Quaternion.Euler(0f, newAngle, 0f);
+                }
+            }
+            else if (!hasExternalDisplacementOverride && inputMagnitude > 0.01f)
             {
                 float targetAngle = MobaMovementMath.CalculateTargetAngle(rawInput);
                 float newAngle = MobaMovementMath.RotateTowardsAngle(transform.eulerAngles.y, targetAngle, turnSpeed, dt);
                 transform.rotation = Quaternion.Euler(0f, newAngle, 0f);
+            }
 
+            if (inputMagnitude > 0.01f)
+            {
                 currentMoveDirection = MobaMovementMath.InputToWorldDirection(rawInput).normalized;
+            }
+            else if (!isAimLocked)
+            {
+                currentMoveDirection = transform.forward;
             }
 
             // 3. Apply gravity
@@ -283,9 +362,10 @@ namespace Moba.Runtime.Movement
             }
 
             // 4. Calculate total velocity and apply movement
+            // MOBA走A位移：当准星锁定敌人时，角色位移方向必须跟随摇杆输入（currentMoveDirection），而非强制身体面朝方向
             Vector3 horizontalVel = hasExternalDisplacementOverride
                 ? externalHorizontalVelocity
-                : (transform.forward * currentHorizontalSpeed);
+                : (currentMoveDirection * currentHorizontalSpeed);
             Vector3 velocity = horizontalVel + (Vector3.up * verticalVelocity);
             characterController.Move(velocity * dt);
             ApplyVisualHeightOffset();
@@ -293,7 +373,7 @@ namespace Moba.Runtime.Movement
             // 5. Update debug fields
             debugCurrentSpeed = horizontalVel.magnitude;
             debugIsMoving = debugCurrentSpeed > 0.05f;
-            debugMoveDirection = transform.forward;
+            debugMoveDirection = currentMoveDirection;
         }
     }
 }
