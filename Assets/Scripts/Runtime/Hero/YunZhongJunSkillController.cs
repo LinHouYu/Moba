@@ -379,9 +379,6 @@ namespace Moba.Runtime.Hero
             attackCdRemaining = attackCooldown;
             PlayAudio(attackSoundClip);
 
-            // 触发普通攻击冲刺淡蓝色 3D 炫酷破空与流光特效
-            vfxController?.PlayBasicAttackBlueDashVfx(0.22f);
-
             MobaTargetDummy target = FindNearestDummy(
                 currentForm == YunZhongJunForm.Flying ? flyingAttackRange + 1.2f : groundedAttackRange);
 
@@ -394,11 +391,25 @@ namespace Moba.Runtime.Hero
                 {
                     // 飞鸡近战贴身微追击手感 + 叠1层抓击印记 + 回复少量气息维持飞行
                     float dist = HorizontalDistance(transform.position, target.transform.position);
-                    if (dist > 1.6f && dist <= flyingAttackRange + 1.2f)
+                    bool shouldPlayDashVfx = YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                        currentForm,
+                        hasTarget: true,
+                        dist,
+                        minDashDistance: 1.2f,
+                        maxDashDistance: flyingAttackRange + 1.2f,
+                        isCancellingRecoil: cancelledRecoil);
+
+                    if (dist > 1.2f && dist <= flyingAttackRange + 1.2f)
                     {
                         Vector3 stepDir = (target.transform.position - transform.position);
                         stepDir.y = 0f;
                         GetComponent<CharacterController>()?.Move(stepDir.normalized * Mathf.Min(dist - 1.4f, 1.8f));
+                    }
+
+                    // 核心要求：走地鸡情况下不需要任何特效，只有在展翅的时候攻击是冲刺撞击敌人的时候才显示出来特效
+                    if (shouldPlayDashVfx)
+                    {
+                        vfxController?.PlayBasicAttackBlueDashVfx(0.22f);
                     }
 
                     currentBreath = Mathf.Clamp(currentBreath + flyingClawBreathGain, 0f, maxBreath);
@@ -407,7 +418,7 @@ namespace Moba.Runtime.Hero
                 }
                 else
                 {
-                    // 走地鸡普攻（不叠抓击印记）
+                    // 走地鸡普攻（不叠抓击印记，绝对不显示任何冲刺/技能特效）
                     string prefix = string.IsNullOrEmpty(actionLabel) ? "羽箭" : actionLabel;
                     target.TakeSkillOrAttackDamage(groundedAttackDamage, addClawStacks: 0, customPopupPrefix: prefix);
                 }
@@ -1072,6 +1083,7 @@ namespace Moba.Runtime.Hero
 
             if (prevForm == YunZhongJunForm.Flying && currentForm == YunZhongJunForm.Grounded)
             {
+                vfxController?.StopSkill1BlueDashVfx();
                 ShowHeroHint("气息耗尽变为【走地鸡】！可用 二技能+大招 秒变飞鸡", 2.8f);
                 SpawnHeroPopup("折翼·走地鸡", new Color(1f, 0.6f, 0.25f));
             }

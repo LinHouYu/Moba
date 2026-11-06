@@ -439,5 +439,35 @@ namespace Moba.Runtime.Hero
                 ? new Color(0.25f, 0.82f, 1f, safeAlpha)
                 : new Color(0.18f, 0.72f, 1f, safeAlpha);
         }
+
+        /// <summary>
+        /// 判断是否应该播放展翅冲刺攻击特效：
+        /// 规则：走地鸡形态下不显示任何特效；只有在展翅形态下，且攻击行为判定为冲刺贴身撞击目标时才显示特效。
+        /// </summary>
+        public static bool ShouldPlayFlyingAttackDashVfx(
+            YunZhongJunForm form,
+            bool hasTarget,
+            float distanceToTarget,
+            float minDashDistance = 1.2f,
+            float maxDashDistance = 4.6f,
+            bool isCancellingRecoil = false)
+        {
+            if (form != YunZhongJunForm.Flying)
+            {
+                return false;
+            }
+
+            if (!hasTarget)
+            {
+                return false;
+            }
+
+            if (isCancellingRecoil)
+            {
+                return true;
+            }
+
+            return distanceToTarget > minDashDistance && distanceToTarget <= maxDashDistance;
+        }
     }
 }

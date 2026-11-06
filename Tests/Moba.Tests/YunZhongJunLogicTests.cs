@@ -297,5 +297,36 @@ namespace Moba.Tests
             Assert.That(vfxColor.b, Is.GreaterThan(0.9f));
             Assert.That(vfxColor.r, Is.LessThan(0.35f));
         }
+
+        [Test]
+        public void ShouldPlayFlyingAttackDashVfx_GroundedNeverPlays_FlyingOnlyPlaysWhenDashingIntoTarget()
+        {
+            // 规则：
+            // 1. 走地鸡状态下（Grounded），无论是否有目标、无论距离远近，绝不播放任何冲刺特效
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Grounded, hasTarget: true, distanceToTarget: 2.5f), Is.False);
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Grounded, hasTarget: false, distanceToTarget: 0f), Is.False);
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Grounded, hasTarget: true, distanceToTarget: 3.5f, isCancellingRecoil: true), Is.False);
+
+            // 2. 展翅状态下（Flying），无目标时不出特效
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Flying, hasTarget: false, distanceToTarget: 3.0f), Is.False);
+
+            // 3. 展翅状态下（Flying），有目标但为贴脸原地攻击（<= 1.2f），不播放冲刺特效
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Flying, hasTarget: true, distanceToTarget: 0.8f), Is.False);
+
+            // 4. 展翅状态下（Flying），有目标且距离 > 1.2m 触发冲刺位移撞击敌人时，必须播放淡蓝色炫酷冲刺特效
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Flying, hasTarget: true, distanceToTarget: 2.5f), Is.True);
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Flying, hasTarget: true, distanceToTarget: 4.2f), Is.True);
+
+            // 5. 展翅状态下（Flying），取消倒飞强行冲刺贴身时，必须播放特效
+            Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
+                YunZhongJunForm.Flying, hasTarget: true, distanceToTarget: 0.5f, isCancellingRecoil: true), Is.True);
+        }
     }
 }

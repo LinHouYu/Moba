@@ -34,6 +34,9 @@ namespace Moba.Runtime.Hero
         [SerializeField] private Transform slamCrystalSpikesRoot;
         [SerializeField] private ParticleSystem slamBurstParticles3D;
 
+        [Header("Hero Logic Reference")]
+        [SerializeField] private YunZhongJunSkillController skillController;
+
         [Header("3D VFX Timing (Inspector Tunable)")]
         [SerializeField] [Range(0.2f, 1.2f)] private float skill1HitBurstDuration = 0.42f;
         [SerializeField] [Range(0.4f, 2.0f)] private float skill3SlamVfxDuration = 1.15f;
@@ -115,6 +118,12 @@ namespace Moba.Runtime.Hero
 
         private void AutoResolveSceneReferences()
         {
+            if (skillController == null)
+            {
+                skillController = GetComponentInParent<YunZhongJunSkillController>()
+                    ?? GetComponent<YunZhongJunSkillController>();
+            }
+
             if (skill1DashVfxRoot == null)
             {
                 skill1DashVfxRoot = transform.Find("Skill1_BlueDash_3DVFX");
@@ -190,6 +199,16 @@ namespace Moba.Runtime.Hero
 
         public void StartSkill1BlueDashVfx()
         {
+            if (skillController == null)
+            {
+                skillController = GetComponentInParent<YunZhongJunSkillController>()
+                    ?? GetComponent<YunZhongJunSkillController>();
+            }
+            if (skillController != null && skillController.CurrentForm == YunZhongJunForm.Grounded)
+            {
+                return;
+            }
+
             isSkill1Dashing = true;
             isBasicAttackDashing = false;
             skill1DashElapsed = 0f;
@@ -223,9 +242,20 @@ namespace Moba.Runtime.Hero
 
         /// <summary>
         /// 普通攻击 / 爪击冲刺时触发淡蓝色透明 3D 冲刺破空与双翼流光特效（透明度0.2左右，轻快迅猛且不挡模型）
+        /// 走地鸡形态下不触发任何冲刺特效。
         /// </summary>
         public void PlayBasicAttackBlueDashVfx(float duration = 0.22f)
         {
+            if (skillController == null)
+            {
+                skillController = GetComponentInParent<YunZhongJunSkillController>()
+                    ?? GetComponent<YunZhongJunSkillController>();
+            }
+            if (skillController != null && skillController.CurrentForm == YunZhongJunForm.Grounded)
+            {
+                return;
+            }
+
             if (isSkill1Dashing) return;
 
             isBasicAttackDashing = true;
@@ -281,6 +311,16 @@ namespace Moba.Runtime.Hero
         public void PlaySkill1HitBurstVfx(Vector3 impactWorldPosition)
         {
             StopSkill1BlueDashVfx();
+
+            if (skillController == null)
+            {
+                skillController = GetComponentInParent<YunZhongJunSkillController>()
+                    ?? GetComponent<YunZhongJunSkillController>();
+            }
+            if (skillController != null && skillController.CurrentForm == YunZhongJunForm.Grounded)
+            {
+                return;
+            }
 
             isSkill1HitBurstActive = true;
             skill1HitBurstElapsed = 0f;
