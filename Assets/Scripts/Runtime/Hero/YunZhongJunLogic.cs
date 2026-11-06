@@ -17,10 +17,11 @@ namespace Moba.Runtime.Hero
 
     public enum PterosaurAnimState
     {
-        Idle = 0,     // 静止待机 (idle, 3.0s Loop)
-        Walk = 1,     // 半截摇杆四足迈步 (walk, 1.0s Loop)
-        Sprint = 2,   // 摇杆拉满/一技能疾跑冲刺 (sprint, 0.667s Loop)
-        FlySlam = 3   // 三技能飞天砸地 (fly_slam, 3.6s Once, T=2.40s 砸地暴击)
+        Idle = 0,        // 静止待机 (idle, 3.0s Loop)
+        Walk = 1,        // 半截摇杆四足迈步 (walk, 1.0s Loop)
+        Sprint = 2,      // 摇杆拉满/一技能疾跑冲刺 (sprint, 0.667s Loop)
+        FlySlam = 3,     // 三技能飞天砸地 (fly_slam, 3.6s Once, T=2.40s 砸地暴击)
+        AttackClaw = 4   // 普通攻击/利爪挥击 (attack_claw, 0.85s Once, 0.34s打击)
     }
 
     /// <summary>
@@ -40,6 +41,8 @@ namespace Moba.Runtime.Hero
         public const float LegacyBugActualSkill1StunDuration = 1.0f;
         public const float FlySlamImpactTimestamp = 2.40f;
         public const float FlySlamTotalDuration = 3.60f;
+        public const float DefaultAttackClawDuration = 0.85f;
+        public const float DefaultAttackClawStrikeTime = 0.34f;
         public const float DefaultWalkThreshold = 0.05f;
         public const float DefaultSprintThreshold = 0.75f;
 
@@ -297,8 +300,10 @@ namespace Moba.Runtime.Hero
 
         /// <summary>
         /// 翼龙动作状态判定：
-        /// - 正在释放三技能大招（fly_slam）时，优先播放 FlySlam；
-        /// - 正在释放一技能蓝色冲刺 或 虚拟摇杆拉满（>= sprintThreshold）时，调用 Sprint 动画；
+        /// - 正在释放三技能大招（fly_slam）时，最高优先级播放 FlySlam；
+        /// - 正在释放一技能蓝色冲刺时，优先播放 Sprint 冲刺动画；
+        /// - 处于普攻攻击前摇/撕抓期（isAttacking）时，播放 AttackClaw 利爪攻击动画；
+        /// - 虚拟摇杆拉满（>= sprintThreshold）时，调用 Sprint 动画；
         /// - 玩家拖动半截摇杆（>= walkThreshold 且 < sprintThreshold）时，调用 Walk 动画；
         /// - 英雄不移动（< walkThreshold）时，采用 Idle 动画。
         /// </summary>
@@ -306,6 +311,23 @@ namespace Moba.Runtime.Hero
             float joystickMagnitude,
             bool isDashingSkill1,
             bool isPlayingFlySlam,
+            float walkThreshold,
+            float sprintThreshold)
+        {
+            return EvaluatePterosaurAnimationState(
+                joystickMagnitude,
+                isDashingSkill1,
+                isPlayingFlySlam,
+                isAttacking: false,
+                walkThreshold,
+                sprintThreshold);
+        }
+
+        public static PterosaurAnimState EvaluatePterosaurAnimationState(
+            float joystickMagnitude,
+            bool isDashingSkill1,
+            bool isPlayingFlySlam,
+            bool isAttacking = false,
             float walkThreshold = DefaultWalkThreshold,
             float sprintThreshold = DefaultSprintThreshold)
         {
@@ -317,6 +339,11 @@ namespace Moba.Runtime.Hero
             if (isDashingSkill1)
             {
                 return PterosaurAnimState.Sprint;
+            }
+
+            if (isAttacking)
+            {
+                return PterosaurAnimState.AttackClaw;
             }
 
             float safeWalk = Mathf.Clamp(walkThreshold, 0.001f, 0.9f);
@@ -349,6 +376,8 @@ namespace Moba.Runtime.Hero
                     return "sprint";
                 case PterosaurAnimState.FlySlam:
                     return "fly_slam";
+                case PterosaurAnimState.AttackClaw:
+                    return "attack_claw";
                 case PterosaurAnimState.Idle:
                 default:
                     return "idle";

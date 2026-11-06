@@ -378,6 +378,7 @@ namespace Moba.Runtime.Hero
             if (attackCdRemaining > 0f) return cancelledRecoil;
             attackCdRemaining = attackCooldown;
             PlayAudio(attackSoundClip);
+            animatorBridge?.PlayAttackClaw();
 
             MobaTargetDummy target = FindNearestDummy(
                 currentForm == YunZhongJunForm.Flying ? flyingAttackRange + 1.2f : groundedAttackRange);

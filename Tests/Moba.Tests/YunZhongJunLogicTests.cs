@@ -328,5 +328,48 @@ namespace Moba.Tests
             Assert.That(YunZhongJunLogic.ShouldPlayFlyingAttackDashVfx(
                 YunZhongJunForm.Flying, hasTarget: true, distanceToTarget: 0.5f, isCancellingRecoil: true), Is.True);
         }
+
+        [Test]
+        public void AttackClawAnimation_StateMappingAndPriority_Verified()
+        {
+            // 1. Clip 名字映射验证
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(PterosaurAnimState.AttackClaw), Is.EqualTo("attack_claw"));
+
+            // 2. 常量定义验证
+            Assert.That(YunZhongJunLogic.DefaultAttackClawDuration, Is.EqualTo(0.85f).Within(0.001f));
+            Assert.That(YunZhongJunLogic.DefaultAttackClawStrikeTime, Is.EqualTo(0.34f).Within(0.001f));
+
+            // 3. 普攻激活状态下，进入 AttackClaw
+            var attackState = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                joystickMagnitude: 0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: true);
+            Assert.That(attackState, Is.EqualTo(PterosaurAnimState.AttackClaw));
+
+            // 4. 优先级检查：三技能大招（fly_slam）优先级最高，压制普攻动画
+            var slamOverride = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                joystickMagnitude: 0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: true,
+                isAttacking: true);
+            Assert.That(slamOverride, Is.EqualTo(PterosaurAnimState.FlySlam));
+
+            // 5. 优先级检查：一技能蓝色冲刺（sprint）优先于普攻
+            var sprintOverride = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                joystickMagnitude: 0f,
+                isDashingSkill1: true,
+                isPlayingFlySlam: false,
+                isAttacking: true);
+            Assert.That(sprintOverride, Is.EqualTo(PterosaurAnimState.Sprint));
+
+            // 6. 非攻击状态下（isAttacking: false），正常根据摇杆输入判断
+            var normalIdle = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                joystickMagnitude: 0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: false);
+            Assert.That(normalIdle, Is.EqualTo(PterosaurAnimState.Idle));
+        }
     }
 }

@@ -1647,6 +1647,10 @@ namespace Moba.Editor
                             };
                             clip.events = new AnimationEvent[] { slamEvent };
                         }
+                        else if (clip.name == "attack_claw")
+                        {
+                            clip.loopTime = false;
+                        }
                         clipList.Add(clip);
                     }
 
@@ -1691,9 +1695,11 @@ namespace Moba.Editor
             EnsureAnimatorParameter(controller, "MoveState", AnimatorControllerParameterType.Int);
             EnsureAnimatorParameter(controller, "SpeedNormalized", AnimatorControllerParameterType.Float);
             EnsureAnimatorParameter(controller, "IsFlyingSlam", AnimatorControllerParameterType.Bool);
+            EnsureAnimatorParameter(controller, "IsAttacking", AnimatorControllerParameterType.Bool);
+            EnsureAnimatorParameter(controller, "AttackClaw", AnimatorControllerParameterType.Trigger);
 
             var subAssets = AssetDatabase.LoadAllAssetsAtPath(PterosaurFbxPath);
-            AnimationClip idleClip = null, walkClip = null, sprintClip = null, flySlamClip = null;
+            AnimationClip idleClip = null, walkClip = null, sprintClip = null, flySlamClip = null, attackClawClip = null;
             foreach (var a in subAssets)
             {
                 if (a is AnimationClip clip)
@@ -1702,6 +1708,7 @@ namespace Moba.Editor
                     else if (clip.name == "walk") walkClip = clip;
                     else if (clip.name == "sprint") sprintClip = clip;
                     else if (clip.name == "fly_slam") flySlamClip = clip;
+                    else if (clip.name == "attack_claw") attackClawClip = clip;
                 }
             }
 
@@ -1712,17 +1719,62 @@ namespace Moba.Editor
                 var walkState = FindOrAddState(rootSm, "walk", walkClip);
                 var sprintState = FindOrAddState(rootSm, "sprint", sprintClip);
                 var flySlamState = FindOrAddState(rootSm, "fly_slam", flySlamClip);
+                var attackClawState = FindOrAddState(rootSm, "attack_claw", attackClawClip);
 
                 rootSm.defaultState = idleState;
 
                 EnsureTransition(idleState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
                 EnsureTransition(idleState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+                EnsureTransition(idleState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
 
                 EnsureTransition(walkState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(walkState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+                EnsureTransition(walkState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
 
                 EnsureTransition(sprintState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(sprintState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
+                EnsureTransition(sprintState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+
+                // attack_claw -> 状态过渡（走A取消后摇或自然回归待机）
+                EnsureTransition(attackClawState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
+                EnsureTransition(attackClawState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.08f);
+                EnsureTransition(attackClawState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.08f);
+
+                bool hasAttackExitToIdle = false;
+                foreach (var tr in attackClawState.transitions)
+                {
+                    if (tr.destinationState == idleState && tr.hasExitTime)
+                    {
+                        hasAttackExitToIdle = true;
+                        break;
+                    }
+                }
+                if (!hasAttackExitToIdle)
+                {
+                    var exitTr = attackClawState.AddTransition(idleState);
+                    exitTr.hasExitTime = true;
+                    exitTr.exitTime = 0.90f;
+                    exitTr.duration = 0.10f;
+                }
+
+                // AnyState -> attack_claw (Trigger 快速连招击发)
+                bool hasAnyToAttackClaw = false;
+                foreach (var tr in rootSm.anyStateTransitions)
+                {
+                    if (tr.destinationState == attackClawState)
+                    {
+                        hasAnyToAttackClaw = true;
+                        break;
+                    }
+                }
+                if (!hasAnyToAttackClaw)
+                {
+                    var anyTr = rootSm.AddAnyStateTransition(attackClawState);
+                    anyTr.canTransitionToSelf = true;
+                    anyTr.hasExitTime = false;
+                    anyTr.duration = 0.05f;
+                    anyTr.AddCondition(AnimatorConditionMode.If, 0, "AttackClaw");
+                }
 
                 // AnyState -> fly_slam
                 bool hasAnyToFlySlam = false;
