@@ -604,5 +604,40 @@ namespace Moba.Tests
             // 0.45s 之后全程平稳立于地面 (0m)
             Assert.That(YunZhongJunLogic.EvaluateLandingHeightOffset(0.90f, cruise), Is.EqualTo(0f).Within(0.001f));
         }
+
+        [Test]
+        public void CalculateHeadBarVerticalOffset_FlyingFormElevates_GroundedStaysAtZero()
+        {
+            float cruise = 1.8f;
+
+            // 1. 走地鸡形态（Grounded）：血条严格保持原位，偏移量必须为 0m，防止血条悬空过高
+            float groundedZero = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Grounded, visualExtraHeight: 0f, defaultFlyingOffset: cruise);
+            Assert.That(groundedZero, Is.EqualTo(0f));
+
+            float groundedIgnoreExtra = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Grounded, visualExtraHeight: 2.4f, defaultFlyingOffset: cruise);
+            Assert.That(groundedIgnoreExtra, Is.EqualTo(0f));
+
+            // 2. 展翅飞行阶段（Flying）：血条随角色向上抬升（+1.8m），避免遮挡翼龙身体与双翼
+            float flyingCruise = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Flying, visualExtraHeight: 1.8f, defaultFlyingOffset: cruise);
+            Assert.That(flyingCruise, Is.EqualTo(1.8f).Within(0.001f));
+
+            // 3. 展翅大招飞天冲顶（2.4m）：血条进一步随角色高升至 2.4m
+            float flyingUlt = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Flying, visualExtraHeight: 2.4f, defaultFlyingOffset: cruise);
+            Assert.That(flyingUlt, Is.EqualTo(2.4f).Within(0.001f));
+
+            // 4. 展翅飞行阶段若初始帧 visualExtraHeight 尚未计算（<= 0）：回退至 safeOffset（1.8m），确保从第一帧起绝不遮挡角色
+            float flyingInitialFallback = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Flying, visualExtraHeight: 0f, defaultFlyingOffset: cruise);
+            Assert.That(flyingInitialFallback, Is.EqualTo(cruise).Within(0.001f));
+
+            // 5. 支持自定义飞行血条抬升偏移配置
+            float customOffset = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                YunZhongJunForm.Flying, visualExtraHeight: 0f, defaultFlyingOffset: 2.2f);
+            Assert.That(customOffset, Is.EqualTo(2.2f).Within(0.001f));
+        }
     }
 }

@@ -126,6 +126,20 @@ namespace Moba.Runtime.Hero
         [SerializeField] private UnityEngine.UI.Text stateBadgeText;
         [SerializeField] private Font popupFont;
 
+        [Header("HeadBar Follow Settings (血条高度与展翅跟随)")]
+        [Tooltip("展翅阶段血条额外跟随抬升高度（米，仅展翅阶段跟随角色向上抬高，防止遮挡角色）")]
+        [SerializeField] private float flyingHeadBarExtraYOffset = YunZhongJunLogic.DefaultFlyingCruiseHeight;
+        private Vector3 baseHeadBarLocalPos = new Vector3(0f, 2.9f, 0f);
+        private bool hasCachedBaseHeadBarPos = false;
+
+        public float FlyingHeadBarExtraYOffset
+        {
+            get => flyingHeadBarExtraYOffset;
+            set => flyingHeadBarExtraYOffset = Mathf.Max(0f, value);
+        }
+        public Vector3 CurrentHeadBarLocalPosition => headBarRoot != null ? headBarRoot.localPosition : baseHeadBarLocalPos;
+        public float HeadBarElevationOffset => (headBarRoot != null && hasCachedBaseHeadBarPos) ? headBarRoot.localPosition.y - baseHeadBarLocalPos.y : 0f;
+
         [Header("Audio Settings (Inspector Tunable)")]
         [SerializeField] private AudioSource audioSource;
         [SerializeField] private AudioClip attackSoundClip;
@@ -240,6 +254,11 @@ namespace Moba.Runtime.Hero
             featherRainRoot = rainRoot;
             featherRainParticles = rainPs;
             headBarRoot = headBar;
+            if (headBar != null)
+            {
+                baseHeadBarLocalPos = headBar.localPosition;
+                hasCachedBaseHeadBarPos = true;
+            }
             hpFillImage = hpFill;
             breathFillImage = breathFill;
             stateBadgeText = badgeText;
@@ -276,9 +295,20 @@ namespace Moba.Runtime.Hero
         {
             heroMovement = GetComponent<MobaHeroMovement>();
             AutoResolveSceneChildren();
+            CacheBaseHeadBarLocalPosition();
             SyncRingScales();
             SetInitialVisualActiveStates();
             UpdateHeroVisualHeightAndSpeed();
+            UpdateHeadBarPosition();
+        }
+
+        private void CacheBaseHeadBarLocalPosition()
+        {
+            if (headBarRoot != null && !hasCachedBaseHeadBarPos)
+            {
+                baseHeadBarLocalPos = headBarRoot.localPosition;
+                hasCachedBaseHeadBarPos = true;
+            }
         }
 
         private void AutoResolveSceneChildren()
@@ -297,6 +327,7 @@ namespace Moba.Runtime.Hero
                 if (ultOuterCircleVisual == null) ultOuterCircleVisual = ultCirclesRoot.Find("Ult_OuterCircle");
             }
             if (headBarRoot == null) headBarRoot = transform.Find("Player_HeadBar");
+            CacheBaseHeadBarLocalPosition();
 
             if (intimidationRingRoot == null)
             {
@@ -761,12 +792,36 @@ namespace Moba.Runtime.Hero
                 headBarRoot.rotation = UnityEngine.Camera.main.transform.rotation;
             }
 
+            UpdateHeadBarPosition();
+
             // 确保大招地面圈始终贴地水平，不随角色旋转歪斜
             if (ultCirclesRoot != null && ultCirclesRoot.gameObject.activeSelf)
             {
                 ultCirclesRoot.position = new Vector3(transform.position.x, 0.04f, transform.position.z);
                 ultCirclesRoot.rotation = Quaternion.identity;
             }
+        }
+
+        /// <summary>
+        /// 实时更新血条的局部坐标位置：
+        /// 仅限角色在展翅阶段（Flying），血条跟随角色视觉抬升高度同步向上抬高，
+        /// 走地鸡阶段严格归零保持原位，防止遮挡角色模型。
+        /// </summary>
+        public void UpdateHeadBarPosition()
+        {
+            if (headBarRoot == null) return;
+            if (!hasCachedBaseHeadBarPos) CacheBaseHeadBarLocalPosition();
+
+            float visualOffset = heroMovement != null ? heroMovement.VisualExtraHeightOffset : 0f;
+            float extraHeight = YunZhongJunLogic.CalculateHeadBarVerticalOffset(
+                currentForm,
+                visualOffset,
+                flyingHeadBarExtraYOffset);
+
+            headBarRoot.localPosition = new Vector3(
+                baseHeadBarLocalPos.x,
+                baseHeadBarLocalPos.y + extraHeight,
+                baseHeadBarLocalPos.z);
         }
 
         private void UpdateSkill1StateMachine(float dt)

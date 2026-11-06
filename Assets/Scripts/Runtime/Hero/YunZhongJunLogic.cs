@@ -545,6 +545,26 @@ namespace Moba.Runtime.Hero
         }
 
         /// <summary>
+        /// 仅在角色展翅飞行阶段，计算头顶血条随角色向上抬升的高度偏移（米）：
+        /// - 走地鸡形态（Grounded）：严格保持为 0，防止血条在地面悬空过高；
+        /// - 展翅飞行阶段（Flying）：跟随角色视觉高度向上抬升（至少抬升 defaultFlyingOffset），
+        ///   确保血条始终处于展翅翼龙身体与双翼上方，彻底解决血条遮挡角色的BUG。
+        /// </summary>
+        public static float CalculateHeadBarVerticalOffset(
+            YunZhongJunForm form,
+            float visualExtraHeight,
+            float defaultFlyingOffset = DefaultFlyingCruiseHeight)
+        {
+            if (form != YunZhongJunForm.Flying)
+            {
+                return 0f;
+            }
+
+            float safeOffset = Mathf.Max(0f, defaultFlyingOffset);
+            return visualExtraHeight > 0.001f ? visualExtraHeight : safeOffset;
+        }
+
+        /// <summary>
         /// 计算三技能 fly_slam（总长3.6s，T=2.40s巨爪砸地）期间的额外高度曲线：
         /// - 0.00 ~ 0.25s：地面蓄力下蹲（0m）
         /// - 0.25 ~ 0.80s：起飞蓄力冲天（平滑升至 maxSkyHeight）
