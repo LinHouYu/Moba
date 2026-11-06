@@ -1742,17 +1742,44 @@ namespace Moba.Editor
                 EnsureTransition(walkState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
                 EnsureTransition(walkState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
                 EnsureTransition(walkState, flyTakeoffState, "MoveState", AnimatorConditionMode.Equals, 5f, 0.10f);
+                EnsureTransition(walkState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
 
                 EnsureTransition(sprintState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(sprintState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
                 EnsureTransition(sprintState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+                EnsureTransition(sprintState, flyTakeoffState, "MoveState", AnimatorConditionMode.Equals, 5f, 0.10f);
                 EnsureTransition(sprintState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
 
-                // fly_takeoff (MoveState == 5) -> fly_loop (MoveState == 6) 或 sprint
+                // fly_takeoff (MoveState == 5) -> fly_loop (MoveState == 6)
+                // 严禁存在 fly_takeoff 到 sprintState / walkState 的打断过渡！
+                for (int i = flyTakeoffState.transitions.Length - 1; i >= 0; i--)
+                {
+                    var dest = flyTakeoffState.transitions[i].destinationState;
+                    if (dest == sprintState || dest == walkState)
+                    {
+                        flyTakeoffState.RemoveTransition(flyTakeoffState.transitions[i]);
+                    }
+                }
                 EnsureTransition(flyTakeoffState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
-                EnsureTransition(flyTakeoffState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
 
-                // fly_loop (MoveState == 6) <-> sprint / attack_claw / fly_landing
+                bool hasTakeoffExitToLoop = false;
+                foreach (var tr in flyTakeoffState.transitions)
+                {
+                    if (tr.destinationState == flyLoopState && tr.hasExitTime)
+                    {
+                        hasTakeoffExitToLoop = true;
+                        break;
+                    }
+                }
+                if (!hasTakeoffExitToLoop)
+                {
+                    var exitTr = flyTakeoffState.AddTransition(flyLoopState);
+                    exitTr.hasExitTime = true;
+                    exitTr.exitTime = 0.90f;
+                    exitTr.duration = 0.10f;
+                }
+
+                // fly_loop (MoveState == 6) <-> sprint (仅用于一技能冲刺) / attack_claw / fly_landing
                 EnsureTransition(flyLoopState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
                 EnsureTransition(flyLoopState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
                 EnsureTransition(flyLoopState, flyLandingState, "MoveState", AnimatorConditionMode.Equals, 7f, 0.10f);
@@ -1761,6 +1788,23 @@ namespace Moba.Editor
                 EnsureTransition(flyLandingState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(flyLandingState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
                 EnsureTransition(flyLandingState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+
+                bool hasLandingExitToIdle = false;
+                foreach (var tr in flyLandingState.transitions)
+                {
+                    if (tr.destinationState == idleState && tr.hasExitTime)
+                    {
+                        hasLandingExitToIdle = true;
+                        break;
+                    }
+                }
+                if (!hasLandingExitToIdle)
+                {
+                    var exitTr = flyLandingState.AddTransition(idleState);
+                    exitTr.hasExitTime = true;
+                    exitTr.exitTime = 0.90f;
+                    exitTr.duration = 0.10f;
+                }
 
                 // attack_claw -> 状态过渡（走A取消后摇或自然回归待机/翱翔）
                 EnsureTransition(attackClawState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);

@@ -452,13 +452,13 @@ namespace Moba.Tests
                 isPlayingFlySlam: false);
             Assert.That(flyCruise, Is.EqualTo(PterosaurAnimState.FlyLoop));
 
-            // 3. 展翅飞行形态：拉满摇杆 -> 切换为高速俯冲飞掠 sprint
+            // 3. 展翅飞行形态：拉满摇杆移动 -> 必须一直保持展翅飞行 fly_loop，严禁走动打断展翅！
             var flySprint = YunZhongJunLogic.EvaluatePterosaurAnimationState(
                 YunZhongJunForm.Flying,
                 joystickMagnitude: 0.85f,
                 isDashingSkill1: false,
                 isPlayingFlySlam: false);
-            Assert.That(flySprint, Is.EqualTo(PterosaurAnimState.Sprint));
+            Assert.That(flySprint, Is.EqualTo(PterosaurAnimState.FlyLoop));
 
             // 4. 展翅飞行形态：一技能蓝色冲刺 -> sprint
             var flySkill1Dash = YunZhongJunLogic.EvaluatePterosaurAnimationState(
@@ -477,10 +477,10 @@ namespace Moba.Tests
                 isAttacking: true);
             Assert.That(flyAttack, Is.EqualTo(PterosaurAnimState.AttackClaw));
 
-            // 6. 展翅飞行形态：起飞阶段 -> fly_takeoff
+            // 6. 展翅飞行形态：起飞阶段 -> fly_takeoff（走动严禁打断起飞展示）
             var flyTakeoff = YunZhongJunLogic.EvaluatePterosaurAnimationState(
                 YunZhongJunForm.Flying,
-                joystickMagnitude: 0.2f,
+                joystickMagnitude: 0.85f,
                 isDashingSkill1: false,
                 isPlayingFlySlam: false,
                 isAttacking: false,
@@ -506,6 +506,45 @@ namespace Moba.Tests
                 isPlayingFlySlam: true,
                 isAttacking: true);
             Assert.That(flySlam, Is.EqualTo(PterosaurAnimState.FlySlam));
+        }
+
+        [Test]
+        public void EvaluatePterosaurAnimationState_FlyingForm_WalkingAndMoving_AlwaysMaintainsFlyLoop()
+        {
+            // 验证核心规则：展翅阶段移动绝不会打断展翅，必须一直保持飞行
+            float[] joystickInputs = new float[] { 0f, 0.15f, 0.45f, 0.75f, 0.95f, 1.0f };
+            foreach (float mag in joystickInputs)
+            {
+                var state = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                    YunZhongJunForm.Flying,
+                    joystickMagnitude: mag,
+                    isDashingSkill1: false,
+                    isPlayingFlySlam: false);
+                Assert.That(state, Is.EqualTo(PterosaurAnimState.FlyLoop), $"In Flying form, joystick magnitude {mag} must maintain FlyLoop!");
+            }
+        }
+
+        [Test]
+        public void EvaluatePterosaurAnimationState_Takeoff_MovingOrAttackingDoesNotInterruptTakeoff()
+        {
+            // 验证核心规则：在张翅起飞过程中走动或普通攻击，严禁打断起飞动作展示
+            var takeoffMoving = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 1.0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: false,
+                isTakingOff: true);
+            Assert.That(takeoffMoving, Is.EqualTo(PterosaurAnimState.FlyTakeoff));
+
+            var takeoffAttacking = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.8f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: true,
+                isTakingOff: true);
+            Assert.That(takeoffAttacking, Is.EqualTo(PterosaurAnimState.FlyTakeoff));
         }
 
         [Test]

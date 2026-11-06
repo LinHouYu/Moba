@@ -316,12 +316,13 @@ namespace Moba.Runtime.Hero
         /// </summary>
         /// <summary>
         /// 全形态动画状态评估核心逻辑：
-        /// 1. fly_slam（大招）优先级最高
-        /// 2. attack_claw（普攻撕抓未结束）次高
-        /// 3. fly_takeoff / fly_landing（形态切换起飞与降落）
+        /// 1. fly_slam（大招）优先级最高；
+        /// 2. fly_takeoff / fly_landing（形态切换起飞与降落过渡，起飞动作具有绝对保护，移动走动严禁打断起飞展示）；
+        /// 3. attack_claw（普攻撕抓未结束）次高；
         /// 4. 展翅飞行形态（Flying）：
-        ///    - 摇杆拉满 或 一技能冲刺 -> sprint（流线型收翼高速俯冲飞掠）
-        ///    - 摇杆拖动半截 或 悬空待机 -> fly_loop（空中扇翼与滑翔翱翔）
+        ///    - 核心规则：必须在展翅过程中一直保持飞行（fly_loop）！
+        ///    - 无论是静止悬停、轻度走动还是全速移动，绝对保持空中展翅翱翔姿态，彻底杜绝走动打断展翅的BUG；
+        ///    - 仅在一技能俯冲冲刺（isDashingSkill1）时播放 sprint 极速俯冲；
         /// 5. 走地鸡形态（Grounded）：
         ///    - 摇杆拉满 或 一技能冲刺 -> sprint（地面低俯疾跑）
         ///    - 摇杆半截 -> walk（四足迈步）
@@ -343,6 +344,18 @@ namespace Moba.Runtime.Hero
                 return PterosaurAnimState.FlySlam;
             }
 
+            // 张翅起飞过程（0.8s）：起飞动作绝对保护，走动/位移严禁打断起飞展示
+            if (isTakingOff)
+            {
+                return PterosaurAnimState.FlyTakeoff;
+            }
+
+            // 着陆阶段（0.9s）
+            if (isLanding)
+            {
+                return PterosaurAnimState.FlyLanding;
+            }
+
             if (isDashingSkill1)
             {
                 return PterosaurAnimState.Sprint;
@@ -353,31 +366,19 @@ namespace Moba.Runtime.Hero
                 return PterosaurAnimState.AttackClaw;
             }
 
-            if (isTakingOff)
-            {
-                return PterosaurAnimState.FlyTakeoff;
-            }
-
-            if (isLanding)
-            {
-                return PterosaurAnimState.FlyLanding;
-            }
-
             float safeWalk = Mathf.Clamp(walkThreshold, 0.001f, 0.9f);
             float safeSprint = Mathf.Clamp(sprintThreshold, safeWalk + 0.05f, 0.99f);
             float mag = Mathf.Max(0f, joystickMagnitude);
 
+            // 展翅飞行形态（Flying）：必须在展翅过程中一直保持飞行（fly_loop）！
+            // 无论是静止悬停、轻度走动还是全速移动，绝对保持空中展翅翱翔姿态，彻底杜绝走动打断展翅的BUG。
             if (form == YunZhongJunForm.Flying)
             {
-                if (isDashingSkill1 || mag >= safeSprint)
-                {
-                    return PterosaurAnimState.Sprint;
-                }
                 return PterosaurAnimState.FlyLoop;
             }
 
             // 走地鸡形态（Grounded）
-            if (isDashingSkill1 || mag >= safeSprint)
+            if (mag >= safeSprint)
             {
                 return PterosaurAnimState.Sprint;
             }
