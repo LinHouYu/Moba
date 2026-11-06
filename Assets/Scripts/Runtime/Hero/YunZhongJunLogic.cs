@@ -21,7 +21,10 @@ namespace Moba.Runtime.Hero
         Walk = 1,        // 半截摇杆四足迈步 (walk, 1.0s Loop)
         Sprint = 2,      // 摇杆拉满/一技能疾跑冲刺 (sprint, 0.667s Loop)
         FlySlam = 3,     // 三技能飞天砸地 (fly_slam, 3.6s Once, T=2.40s 砸地暴击)
-        AttackClaw = 4   // 普通攻击/利爪挥击 (attack_claw, 0.85s Once, 0.34s打击)
+        AttackClaw = 4,  // 普通攻击/利爪挥击 (attack_claw, 0.85s Once, 0.34s打击)
+        FlyTakeoff = 5,  // 起飞冲空 (fly_takeoff, 0.80s Once)
+        FlyLoop = 6,     // 空中翱翔/盘旋 (fly_loop, 1.20s Loop)
+        FlyLanding = 7   // 降落滑翔接地 (fly_landing, 0.90s Once)
     }
 
     /// <summary>
@@ -45,6 +48,10 @@ namespace Moba.Runtime.Hero
         public const float DefaultAttackClawStrikeTime = 0.34f;
         public const float DefaultWalkThreshold = 0.05f;
         public const float DefaultSprintThreshold = 0.75f;
+        public const float DefaultFlyingCruiseHeight = 1.8f;
+        public const float FlyTakeoffDuration = 0.80f;
+        public const float FlyLandingDuration = 0.90f;
+        public const float FlyLoopDuration = 1.20f;
 
         public static readonly Color TargetLockRedColor = new Color(1f, 0.18f, 0.18f, 1f);
         public static readonly Color TargetLockGoldenOrangeColor = new Color(1f, 0.62f, 0.08f, 1f);
@@ -307,27 +314,27 @@ namespace Moba.Runtime.Hero
         /// - 玩家拖动半截摇杆（>= walkThreshold 且 < sprintThreshold）时，调用 Walk 动画；
         /// - 英雄不移动（< walkThreshold）时，采用 Idle 动画。
         /// </summary>
+        /// <summary>
+        /// 全形态动画状态评估核心逻辑：
+        /// 1. fly_slam（大招）优先级最高
+        /// 2. attack_claw（普攻撕抓未结束）次高
+        /// 3. fly_takeoff / fly_landing（形态切换起飞与降落）
+        /// 4. 展翅飞行形态（Flying）：
+        ///    - 摇杆拉满 或 一技能冲刺 -> sprint（流线型收翼高速俯冲飞掠）
+        ///    - 摇杆拖动半截 或 悬空待机 -> fly_loop（空中扇翼与滑翔翱翔）
+        /// 5. 走地鸡形态（Grounded）：
+        ///    - 摇杆拉满 或 一技能冲刺 -> sprint（地面低俯疾跑）
+        ///    - 摇杆半截 -> walk（四足迈步）
+        ///    - 不移动 -> idle（地面戒备呼吸）
+        /// </summary>
         public static PterosaurAnimState EvaluatePterosaurAnimationState(
-            float joystickMagnitude,
-            bool isDashingSkill1,
-            bool isPlayingFlySlam,
-            float walkThreshold,
-            float sprintThreshold)
-        {
-            return EvaluatePterosaurAnimationState(
-                joystickMagnitude,
-                isDashingSkill1,
-                isPlayingFlySlam,
-                isAttacking: false,
-                walkThreshold,
-                sprintThreshold);
-        }
-
-        public static PterosaurAnimState EvaluatePterosaurAnimationState(
+            YunZhongJunForm form,
             float joystickMagnitude,
             bool isDashingSkill1,
             bool isPlayingFlySlam,
             bool isAttacking = false,
+            bool isTakingOff = false,
+            bool isLanding = false,
             float walkThreshold = DefaultWalkThreshold,
             float sprintThreshold = DefaultSprintThreshold)
         {
@@ -346,11 +353,31 @@ namespace Moba.Runtime.Hero
                 return PterosaurAnimState.AttackClaw;
             }
 
+            if (isTakingOff)
+            {
+                return PterosaurAnimState.FlyTakeoff;
+            }
+
+            if (isLanding)
+            {
+                return PterosaurAnimState.FlyLanding;
+            }
+
             float safeWalk = Mathf.Clamp(walkThreshold, 0.001f, 0.9f);
             float safeSprint = Mathf.Clamp(sprintThreshold, safeWalk + 0.05f, 0.99f);
             float mag = Mathf.Max(0f, joystickMagnitude);
 
-            if (mag >= safeSprint)
+            if (form == YunZhongJunForm.Flying)
+            {
+                if (isDashingSkill1 || mag >= safeSprint)
+                {
+                    return PterosaurAnimState.Sprint;
+                }
+                return PterosaurAnimState.FlyLoop;
+            }
+
+            // 走地鸡形态（Grounded）
+            if (isDashingSkill1 || mag >= safeSprint)
             {
                 return PterosaurAnimState.Sprint;
             }
@@ -361,6 +388,45 @@ namespace Moba.Runtime.Hero
             }
 
             return PterosaurAnimState.Idle;
+        }
+
+        public static PterosaurAnimState EvaluatePterosaurAnimationState(
+            float joystickMagnitude,
+            bool isDashingSkill1,
+            bool isPlayingFlySlam,
+            float walkThreshold,
+            float sprintThreshold)
+        {
+            return EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Grounded,
+                joystickMagnitude,
+                isDashingSkill1,
+                isPlayingFlySlam,
+                isAttacking: false,
+                isTakingOff: false,
+                isLanding: false,
+                walkThreshold,
+                sprintThreshold);
+        }
+
+        public static PterosaurAnimState EvaluatePterosaurAnimationState(
+            float joystickMagnitude,
+            bool isDashingSkill1,
+            bool isPlayingFlySlam,
+            bool isAttacking = false,
+            float walkThreshold = DefaultWalkThreshold,
+            float sprintThreshold = DefaultSprintThreshold)
+        {
+            return EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Grounded,
+                joystickMagnitude,
+                isDashingSkill1,
+                isPlayingFlySlam,
+                isAttacking,
+                isTakingOff: false,
+                isLanding: false,
+                walkThreshold,
+                sprintThreshold);
         }
 
         /// <summary>
@@ -378,10 +444,104 @@ namespace Moba.Runtime.Hero
                     return "fly_slam";
                 case PterosaurAnimState.AttackClaw:
                     return "attack_claw";
+                case PterosaurAnimState.FlyTakeoff:
+                    return "fly_takeoff";
+                case PterosaurAnimState.FlyLoop:
+                    return "fly_loop";
+                case PterosaurAnimState.FlyLanding:
+                    return "fly_landing";
                 case PterosaurAnimState.Idle:
                 default:
                     return "idle";
             }
+        }
+
+        /// <summary>
+        /// 计算起飞过渡期的角色高度曲线 (0.00 ~ 0.80s)：
+        /// 0.00 ~ 0.20s：骨盆下蹲蓄力，保持 0m
+        /// 0.20 ~ 0.80s：爆发离地并平滑升至巡航高度 cruiseHeight
+        /// </summary>
+        public static float EvaluateTakeoffHeightOffset(
+            float elapsed,
+            float cruiseHeight = DefaultFlyingCruiseHeight,
+            float duration = FlyTakeoffDuration)
+        {
+            if (elapsed <= 0.20f || cruiseHeight <= 0f) return 0f;
+            if (elapsed >= duration) return cruiseHeight;
+
+            float t = Mathf.InverseLerp(0.20f, duration, elapsed);
+            float smooth = t * t * (3f - 2f * t);
+            return cruiseHeight * smooth;
+        }
+
+        /// <summary>
+        /// 计算降落着陆期的角色高度曲线 (0.00 ~ 0.90s)：
+        /// 0.00 ~ 0.45s：气动刹车减速并平滑俯冲至地面 (0m)
+        /// 0.45 ~ 0.90s：四足稳稳触地 (0m)，进行缓冲与优雅收翅
+        /// </summary>
+        public static float EvaluateLandingHeightOffset(
+            float elapsed,
+            float cruiseHeight = DefaultFlyingCruiseHeight,
+            float duration = FlyLandingDuration)
+        {
+            if (elapsed <= 0f || cruiseHeight <= 0f) return cruiseHeight;
+            float touchdownTime = duration * 0.5f; // 0.45s 触地
+            if (elapsed >= touchdownTime) return 0f;
+
+            float t = Mathf.InverseLerp(0f, touchdownTime, elapsed);
+            float smooth = 1f - (t * t * (3f - 2f * t));
+            return cruiseHeight * smooth;
+        }
+
+        /// <summary>
+        /// 综合评估当前角色的局部 Y 轴高度偏移：
+        /// 1. 三技能大招砸地期间：由 EvaluateFlySlamHeightOffset 控制
+        /// 2. 一技能后撤期间：由 recoilVerticalOffset 控制
+        /// 3. 起飞过渡期：由 EvaluateTakeoffHeightOffset 控制
+        /// 4. 降落过渡期：由 EvaluateLandingHeightOffset 控制
+        /// 5. 展翅飞行形态：保持 cruiseHeight (空中展翅飞行，彻底修复展翅在地面的BUG)
+        /// 6. 走地鸡形态：0m
+        /// </summary>
+        public static float EvaluateHeroVisualHeight(
+            YunZhongJunForm form,
+            bool isInUltAscent,
+            float ultAscentTimer,
+            float ultAscentDuration,
+            float ultSkyHeight,
+            bool isRecoiling,
+            float recoilVerticalOffset,
+            bool isTakingOff,
+            float takeoffTimer,
+            bool isLanding,
+            float landingTimer,
+            float cruiseHeight = DefaultFlyingCruiseHeight)
+        {
+            if (isInUltAscent)
+            {
+                return EvaluateFlySlamHeightOffset(ultAscentTimer, ultAscentDuration, ultSkyHeight);
+            }
+
+            if (isRecoiling)
+            {
+                return recoilVerticalOffset;
+            }
+
+            if (isTakingOff)
+            {
+                return EvaluateTakeoffHeightOffset(takeoffTimer, cruiseHeight);
+            }
+
+            if (isLanding)
+            {
+                return EvaluateLandingHeightOffset(landingTimer, cruiseHeight);
+            }
+
+            if (form == YunZhongJunForm.Flying)
+            {
+                return cruiseHeight;
+            }
+
+            return 0f;
         }
 
         /// <summary>

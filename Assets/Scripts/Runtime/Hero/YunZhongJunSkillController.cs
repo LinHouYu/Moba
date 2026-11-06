@@ -35,6 +35,13 @@ namespace Moba.Runtime.Hero
         [SerializeField] private YunZhongJunForm currentForm = YunZhongJunForm.Flying;
         [SerializeField] [Range(3f, 15f)] private float flyingMoveSpeed = 7.4f;
         [SerializeField] [Range(3f, 15f)] private float groundedMoveSpeed = 5.6f;
+        [Tooltip("展翅飞行形态下的空中巡航飞行高度（米）")]
+        [SerializeField] [Range(0.5f, 4f)] private float flyingCruiseHeight = YunZhongJunLogic.DefaultFlyingCruiseHeight;
+
+        private bool isTakingOff = false;
+        private float takeoffTimer = 0f;
+        private bool isLanding = false;
+        private float landingTimer = 0f;
         [Tooltip("战斗状态持续秒数（期间飞行态若不持续爪击会消耗气息直至变走地鸡）")]
         [SerializeField] [Range(1f, 12f)] private float combatStateDuration = 5f;
         [SerializeField] [Range(0f, 50f)] private float combatBreathDrainPerSec = 18f;
@@ -271,6 +278,7 @@ namespace Moba.Runtime.Hero
             AutoResolveSceneChildren();
             SyncRingScales();
             SetInitialVisualActiveStates();
+            UpdateHeroVisualHeightAndSpeed();
         }
 
         private void AutoResolveSceneChildren()
@@ -660,7 +668,25 @@ namespace Moba.Runtime.Hero
             // 6. 气息自然增减与飞鸡/走地鸡形态切换
             UpdateBreathAndForm(dt);
 
-            // 7. 同步模型高度与翼龙动画状态（idle / walk / sprint / fly_slam）
+            // 6.5 起飞与降落过渡计时
+            if (isTakingOff)
+            {
+                takeoffTimer += dt;
+                if (takeoffTimer >= YunZhongJunLogic.FlyTakeoffDuration)
+                {
+                    isTakingOff = false;
+                }
+            }
+            if (isLanding)
+            {
+                landingTimer += dt;
+                if (landingTimer >= YunZhongJunLogic.FlyLandingDuration)
+                {
+                    isLanding = false;
+                }
+            }
+
+            // 7. 同步模型高度与翼龙动画状态（idle / walk / sprint / fly_slam / fly_takeoff / fly_loop / fly_landing）
             UpdateHeroVisualHeightAndSpeed();
             UpdatePterosaurLocomotionAnimation(dt);
 
@@ -1065,7 +1091,13 @@ namespace Moba.Runtime.Hero
             bool isSkill1Diving = (skill1State == Skill1State.Diving);
             bool isPlayingFlySlam = isInUltAscent || (flySlamAnimRemaining > 0f);
 
-            animatorBridge.UpdateLocomotionAnimation(inputMag, isSkill1Diving, isPlayingFlySlam);
+            animatorBridge.UpdateLocomotionAnimation(
+                currentForm,
+                inputMag,
+                isSkill1Diving,
+                isPlayingFlySlam,
+                isTakingOff,
+                isLanding);
         }
 
         private void UpdateBreathAndForm(float dt)
@@ -1090,12 +1122,20 @@ namespace Moba.Runtime.Hero
 
             if (prevForm == YunZhongJunForm.Flying && currentForm == YunZhongJunForm.Grounded)
             {
+                isLanding = true;
+                landingTimer = 0f;
+                isTakingOff = false;
+                animatorBridge?.PlayLanding();
                 vfxController?.StopSkill1BlueDashVfx();
                 ShowHeroHint("气息耗尽变为【走地鸡】！可用 二技能+大招 秒变飞鸡", 2.8f);
                 SpawnHeroPopup("折翼·走地鸡", new Color(1f, 0.6f, 0.25f));
             }
             else if (prevForm == YunZhongJunForm.Grounded && currentForm == YunZhongJunForm.Flying)
             {
+                isTakingOff = true;
+                takeoffTimer = 0f;
+                isLanding = false;
+                animatorBridge?.PlayTakeoff();
                 ShowHeroHint("气息盈满·展翅变为【飞鸡】！", 1.8f);
                 SpawnHeroPopup("展翅·飞鸡!", new Color(0.4f, 0.95f, 1f));
             }
@@ -1115,16 +1155,20 @@ namespace Moba.Runtime.Hero
                 heroMovement.MoveSpeed = currentForm == YunZhongJunForm.Flying ? flyingMoveSpeed : groundedMoveSpeed;
             }
 
-            // 翼龙 3D 模型 Y 轴高度偏移（地面待机/四足行走/冲刺贴地 Y=0，一技能倒飞抛物线抬升，大招按 fly_slam 轨迹起飞俯冲砸地）
-            float targetYOffset = 0f;
-            if (isInUltAscent)
-            {
-                targetYOffset = YunZhongJunLogic.EvaluateFlySlamHeightOffset(ultAscentTimer, ultAscentDuration, ultSkyHeight);
-            }
-            else if (skill1State == Skill1State.RecoilingBackward)
-            {
-                targetYOffset = recoilVerticalOffset;
-            }
+            // 翼龙 3D 模型 Y 轴高度偏移（展翅飞行空中巡航高度 cruiseHeight，修复展翅在地面BUG；大招按 fly_slam 轨迹起飞俯冲砸地）
+            float targetYOffset = YunZhongJunLogic.EvaluateHeroVisualHeight(
+                currentForm,
+                isInUltAscent,
+                ultAscentTimer,
+                ultAscentDuration,
+                ultSkyHeight,
+                skill1State == Skill1State.RecoilingBackward,
+                recoilVerticalOffset,
+                isTakingOff,
+                takeoffTimer,
+                isLanding,
+                landingTimer,
+                flyingCruiseHeight);
 
             heroMovement.VisualExtraHeightOffset = targetYOffset;
         }

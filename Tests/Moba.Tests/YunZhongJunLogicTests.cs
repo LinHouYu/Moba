@@ -417,5 +417,192 @@ namespace Moba.Tests
 
             Assert.That(overrideVel, Is.EqualTo(diveOverride));
         }
+
+        [Test]
+        public void FlightClips_MappingAndDurations_Verified()
+        {
+            // 1. Clip 名字映射验证
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(PterosaurAnimState.FlyTakeoff), Is.EqualTo("fly_takeoff"));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(PterosaurAnimState.FlyLoop), Is.EqualTo("fly_loop"));
+            Assert.That(YunZhongJunLogic.GetAnimationClipName(PterosaurAnimState.FlyLanding), Is.EqualTo("fly_landing"));
+
+            // 2. 常量定义与时长验证
+            Assert.That(YunZhongJunLogic.FlyTakeoffDuration, Is.EqualTo(0.80f).Within(0.001f));
+            Assert.That(YunZhongJunLogic.FlyLandingDuration, Is.EqualTo(0.90f).Within(0.001f));
+            Assert.That(YunZhongJunLogic.FlyLoopDuration, Is.EqualTo(1.20f).Within(0.001f));
+            Assert.That(YunZhongJunLogic.DefaultFlyingCruiseHeight, Is.EqualTo(1.8f).Within(0.001f));
+        }
+
+        [Test]
+        public void EvaluatePterosaurAnimationState_FlyingForm_PlaysFlyLoopWhenHoveringOrMoving_PlaysSprintWhenFast()
+        {
+            // 1. 展翅飞行形态：静止悬空待机 -> 播放空中飞翔 fly_loop
+            var flyIdle = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false);
+            Assert.That(flyIdle, Is.EqualTo(PterosaurAnimState.FlyLoop));
+
+            // 2. 展翅飞行形态：半截摇杆空中移动 -> 依然保持空中飞翔 fly_loop
+            var flyCruise = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.35f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false);
+            Assert.That(flyCruise, Is.EqualTo(PterosaurAnimState.FlyLoop));
+
+            // 3. 展翅飞行形态：拉满摇杆 -> 切换为高速俯冲飞掠 sprint
+            var flySprint = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.85f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false);
+            Assert.That(flySprint, Is.EqualTo(PterosaurAnimState.Sprint));
+
+            // 4. 展翅飞行形态：一技能蓝色冲刺 -> sprint
+            var flySkill1Dash = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0f,
+                isDashingSkill1: true,
+                isPlayingFlySlam: false);
+            Assert.That(flySkill1Dash, Is.EqualTo(PterosaurAnimState.Sprint));
+
+            // 5. 展翅飞行形态：普攻撕抓中 -> attack_claw
+            var flyAttack = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: true);
+            Assert.That(flyAttack, Is.EqualTo(PterosaurAnimState.AttackClaw));
+
+            // 6. 展翅飞行形态：起飞阶段 -> fly_takeoff
+            var flyTakeoff = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.2f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: false,
+                isTakingOff: true);
+            Assert.That(flyTakeoff, Is.EqualTo(PterosaurAnimState.FlyTakeoff));
+
+            // 7. 降落阶段 -> fly_landing
+            var flyLanding = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.2f,
+                isDashingSkill1: false,
+                isPlayingFlySlam: false,
+                isAttacking: false,
+                isTakingOff: false,
+                isLanding: true);
+            Assert.That(flyLanding, Is.EqualTo(PterosaurAnimState.FlyLanding));
+
+            // 8. 大招 fly_slam 优先级最高
+            var flySlam = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Flying,
+                joystickMagnitude: 0.9f,
+                isDashingSkill1: true,
+                isPlayingFlySlam: true,
+                isAttacking: true);
+            Assert.That(flySlam, Is.EqualTo(PterosaurAnimState.FlySlam));
+        }
+
+        [Test]
+        public void EvaluatePterosaurAnimationState_GroundedForm_BehavesAsOriginalGroundWalk()
+        {
+            // 走地鸡形态：地面四足步态
+            var idle = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Grounded, 0f, false, false);
+            Assert.That(idle, Is.EqualTo(PterosaurAnimState.Idle));
+
+            var walk = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Grounded, 0.35f, false, false);
+            Assert.That(walk, Is.EqualTo(PterosaurAnimState.Walk));
+
+            var sprint = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                YunZhongJunForm.Grounded, 0.85f, false, false);
+            Assert.That(sprint, Is.EqualTo(PterosaurAnimState.Sprint));
+        }
+
+        [Test]
+        public void EvaluateHeroVisualHeight_FlyingFormCruisesInAir_GroundedStaysAtZero()
+        {
+            float cruise = 1.8f;
+
+            // 1. 展翅飞行形态：角色在空中飞行（cruiseHeight），彻底解决展翅在地面BUG！
+            float flyingHeight = YunZhongJunLogic.EvaluateHeroVisualHeight(
+                YunZhongJunForm.Flying,
+                isInUltAscent: false, 0f, 2.4f, 2.4f,
+                isRecoiling: false, 0f,
+                isTakingOff: false, 0f,
+                isLanding: false, 0f,
+                cruiseHeight: cruise);
+            Assert.That(flyingHeight, Is.EqualTo(cruise).Within(0.001f));
+
+            // 2. 走地鸡形态：贴地行走，高度为 0
+            float groundedHeight = YunZhongJunLogic.EvaluateHeroVisualHeight(
+                YunZhongJunForm.Grounded,
+                isInUltAscent: false, 0f, 2.4f, 2.4f,
+                isRecoiling: false, 0f,
+                isTakingOff: false, 0f,
+                isLanding: false, 0f,
+                cruiseHeight: cruise);
+            Assert.That(groundedHeight, Is.EqualTo(0f).Within(0.001f));
+
+            // 3. 一技能倒飞抛物线最高优先级覆盖
+            float recoilHeight = YunZhongJunLogic.EvaluateHeroVisualHeight(
+                YunZhongJunForm.Flying,
+                isInUltAscent: false, 0f, 2.4f, 2.4f,
+                isRecoiling: true, 1.15f,
+                isTakingOff: false, 0f,
+                isLanding: false, 0f,
+                cruiseHeight: cruise);
+            Assert.That(recoilHeight, Is.EqualTo(1.15f).Within(0.001f));
+
+            // 4. 大招飞天砸地最高优先级覆盖
+            float ultHeight = YunZhongJunLogic.EvaluateHeroVisualHeight(
+                YunZhongJunForm.Flying,
+                isInUltAscent: true, 1.2f, 2.4f, 2.4f,
+                isRecoiling: false, 0f,
+                isTakingOff: false, 0f,
+                isLanding: false, 0f,
+                cruiseHeight: cruise);
+            Assert.That(ultHeight, Is.GreaterThan(1.8f));
+        }
+
+        [Test]
+        public void EvaluateTakeoffAndLandingHeightOffset_SmoothCurves_Verified()
+        {
+            float cruise = 1.8f;
+
+            // 起飞曲线：
+            // 0.0 ~ 0.20s 下蹲蓄力为 0m
+            Assert.That(YunZhongJunLogic.EvaluateTakeoffHeightOffset(0.0f, cruise), Is.EqualTo(0f));
+            Assert.That(YunZhongJunLogic.EvaluateTakeoffHeightOffset(0.15f, cruise), Is.EqualTo(0f));
+
+            // 0.20 ~ 0.80s 平滑升空
+            float midTakeoff = YunZhongJunLogic.EvaluateTakeoffHeightOffset(0.50f, cruise);
+            Assert.That(midTakeoff, Is.GreaterThan(0f));
+            Assert.That(midTakeoff, Is.LessThan(cruise));
+
+            // 0.80s 完全升至巡航高度
+            Assert.That(YunZhongJunLogic.EvaluateTakeoffHeightOffset(0.80f, cruise), Is.EqualTo(cruise).Within(0.001f));
+
+            // 降落曲线：
+            // 0.0s 从巡航高度开始减速
+            Assert.That(YunZhongJunLogic.EvaluateLandingHeightOffset(0.0f, cruise), Is.EqualTo(cruise).Within(0.001f));
+
+            // 0.20s 降落中途中
+            float midLanding = YunZhongJunLogic.EvaluateLandingHeightOffset(0.20f, cruise);
+            Assert.That(midLanding, Is.GreaterThan(0f));
+            Assert.That(midLanding, Is.LessThan(cruise));
+
+            // 0.45s 触地归零 0m
+            Assert.That(YunZhongJunLogic.EvaluateLandingHeightOffset(0.45f, cruise), Is.EqualTo(0f).Within(0.001f));
+
+            // 0.45s 之后全程平稳立于地面 (0m)
+            Assert.That(YunZhongJunLogic.EvaluateLandingHeightOffset(0.90f, cruise), Is.EqualTo(0f).Within(0.001f));
+        }
     }
 }

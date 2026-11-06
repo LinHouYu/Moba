@@ -1620,68 +1620,70 @@ namespace Moba.Editor
             var modelImporter = AssetImporter.GetAtPath(PterosaurFbxPath) as ModelImporter;
             if (modelImporter != null)
             {
-                var defaultClips = modelImporter.defaultClipAnimations;
-                if (defaultClips != null && defaultClips.Length > 0)
+                var targetClips = new (string name, string take, int first, int last, bool loop)[]
                 {
-                    var clipList = new List<ModelImporterClipAnimation>();
-                    foreach (var dClip in defaultClips)
+                    ("idle", "idle", 0, 90, true),
+                    ("walk", "walk", 0, 30, true),
+                    ("sprint", "sprint", 0, 20, true),
+                    ("fly_slam", "fly_slam", 0, 108, false),
+                    ("attack_claw", "attack_claw", 0, 26, false),
+                    ("fly_takeoff", "fly_takeoff", 0, 24, false),
+                    ("fly_loop", "fly_loop", 0, 36, true),
+                    ("fly_landing", "fly_landing", 0, 27, false)
+                };
+
+                var clipList = new List<ModelImporterClipAnimation>();
+                foreach (var (cName, take, first, last, loop) in targetClips)
+                {
+                    var clip = new ModelImporterClipAnimation
                     {
-                        var clip = new ModelImporterClipAnimation
+                        name = cName,
+                        takeName = take,
+                        firstFrame = first,
+                        lastFrame = last,
+                        loopTime = loop
+                    };
+                    if (cName == "fly_slam")
+                    {
+                        clip.events = new AnimationEvent[]
                         {
-                            name = dClip.name,
-                            takeName = dClip.takeName,
-                            firstFrame = dClip.firstFrame,
-                            lastFrame = dClip.lastFrame
-                        };
-                        if (clip.name == "idle" || clip.name == "walk" || clip.name == "sprint")
-                        {
-                            clip.loopTime = true;
-                        }
-                        else if (clip.name == "fly_slam")
-                        {
-                            clip.loopTime = false;
-                            var slamEvent = new AnimationEvent
+                            new AnimationEvent
                             {
                                 functionName = "OnSlamImpact",
                                 time = YunZhongJunLogic.FlySlamImpactTimestamp // 2.40s
-                            };
-                            clip.events = new AnimationEvent[] { slamEvent };
-                        }
-                        else if (clip.name == "attack_claw")
-                        {
-                            clip.loopTime = false;
-                        }
-                        clipList.Add(clip);
-                    }
-
-                    bool needsReimport = false;
-                    var currentClips = modelImporter.clipAnimations;
-                    if (currentClips == null || currentClips.Length != clipList.Count)
-                    {
-                        needsReimport = true;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < currentClips.Length; i++)
-                        {
-                            if (currentClips[i].name != clipList[i].name || currentClips[i].loopTime != clipList[i].loopTime)
-                            {
-                                needsReimport = true;
-                                break;
                             }
-                            if (currentClips[i].name == "fly_slam" && (currentClips[i].events == null || currentClips[i].events.Length == 0))
-                            {
-                                needsReimport = true;
-                                break;
-                            }
+                        };
+                    }
+                    clipList.Add(clip);
+                }
+
+                bool needsReimport = false;
+                var currentClips = modelImporter.clipAnimations;
+                if (currentClips == null || currentClips.Length != clipList.Count)
+                {
+                    needsReimport = true;
+                }
+                else
+                {
+                    for (int i = 0; i < currentClips.Length; i++)
+                    {
+                        if (currentClips[i].name != clipList[i].name || currentClips[i].loopTime != clipList[i].loopTime)
+                        {
+                            needsReimport = true;
+                            break;
+                        }
+                        if (currentClips[i].name == "fly_slam" && (currentClips[i].events == null || currentClips[i].events.Length == 0))
+                        {
+                            needsReimport = true;
+                            break;
                         }
                     }
+                }
 
-                    if (needsReimport)
-                    {
-                        modelImporter.clipAnimations = clipList.ToArray();
-                        modelImporter.SaveAndReimport();
-                    }
+                if (needsReimport)
+                {
+                    modelImporter.clipAnimations = clipList.ToArray();
+                    modelImporter.SaveAndReimport();
                 }
             }
 
@@ -1700,6 +1702,7 @@ namespace Moba.Editor
 
             var subAssets = AssetDatabase.LoadAllAssetsAtPath(PterosaurFbxPath);
             AnimationClip idleClip = null, walkClip = null, sprintClip = null, flySlamClip = null, attackClawClip = null;
+            AnimationClip flyTakeoffClip = null, flyLoopClip = null, flyLandingClip = null;
             foreach (var a in subAssets)
             {
                 if (a is AnimationClip clip)
@@ -1709,6 +1712,9 @@ namespace Moba.Editor
                     else if (clip.name == "sprint") sprintClip = clip;
                     else if (clip.name == "fly_slam") flySlamClip = clip;
                     else if (clip.name == "attack_claw") attackClawClip = clip;
+                    else if (clip.name == "fly_takeoff") flyTakeoffClip = clip;
+                    else if (clip.name == "fly_loop") flyLoopClip = clip;
+                    else if (clip.name == "fly_landing") flyLandingClip = clip;
                 }
             }
 
@@ -1720,25 +1726,47 @@ namespace Moba.Editor
                 var sprintState = FindOrAddState(rootSm, "sprint", sprintClip);
                 var flySlamState = FindOrAddState(rootSm, "fly_slam", flySlamClip);
                 var attackClawState = FindOrAddState(rootSm, "attack_claw", attackClawClip);
+                var flyTakeoffState = FindOrAddState(rootSm, "fly_takeoff", flyTakeoffClip);
+                var flyLoopState = FindOrAddState(rootSm, "fly_loop", flyLoopClip);
+                var flyLandingState = FindOrAddState(rootSm, "fly_landing", flyLandingClip);
 
                 rootSm.defaultState = idleState;
 
                 EnsureTransition(idleState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
                 EnsureTransition(idleState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
                 EnsureTransition(idleState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+                EnsureTransition(idleState, flyTakeoffState, "MoveState", AnimatorConditionMode.Equals, 5f, 0.10f);
+                EnsureTransition(idleState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
 
                 EnsureTransition(walkState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(walkState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
                 EnsureTransition(walkState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+                EnsureTransition(walkState, flyTakeoffState, "MoveState", AnimatorConditionMode.Equals, 5f, 0.10f);
 
                 EnsureTransition(sprintState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(sprintState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
                 EnsureTransition(sprintState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+                EnsureTransition(sprintState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
 
-                // attack_claw -> 状态过渡（走A取消后摇或自然回归待机）
+                // fly_takeoff (MoveState == 5) -> fly_loop (MoveState == 6) 或 sprint
+                EnsureTransition(flyTakeoffState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.10f);
+                EnsureTransition(flyTakeoffState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+
+                // fly_loop (MoveState == 6) <-> sprint / attack_claw / fly_landing
+                EnsureTransition(flyLoopState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+                EnsureTransition(flyLoopState, attackClawState, "MoveState", AnimatorConditionMode.Equals, 4f, 0.05f);
+                EnsureTransition(flyLoopState, flyLandingState, "MoveState", AnimatorConditionMode.Equals, 7f, 0.10f);
+
+                // fly_landing (MoveState == 7) -> idle / walk / sprint
+                EnsureTransition(flyLandingState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
+                EnsureTransition(flyLandingState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.10f);
+                EnsureTransition(flyLandingState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.10f);
+
+                // attack_claw -> 状态过渡（走A取消后摇或自然回归待机/翱翔）
                 EnsureTransition(attackClawState, idleState, "MoveState", AnimatorConditionMode.Equals, 0f, 0.10f);
                 EnsureTransition(attackClawState, walkState, "MoveState", AnimatorConditionMode.Equals, 1f, 0.08f);
                 EnsureTransition(attackClawState, sprintState, "MoveState", AnimatorConditionMode.Equals, 2f, 0.08f);
+                EnsureTransition(attackClawState, flyLoopState, "MoveState", AnimatorConditionMode.Equals, 6f, 0.08f);
 
                 bool hasAttackExitToIdle = false;
                 foreach (var tr in attackClawState.transitions)
@@ -1815,6 +1843,7 @@ namespace Moba.Editor
             }
 
             EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
         }
 
         private static void EnsureAnimatorParameter(AnimatorController controller, string paramName, AnimatorControllerParameterType type)

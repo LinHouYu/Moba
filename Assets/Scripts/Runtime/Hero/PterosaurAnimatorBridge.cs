@@ -66,7 +66,10 @@ namespace Moba.Runtime.Hero
         private void Start()
         {
             ResolveReferences();
-            ForcePlayState(PterosaurAnimState.Idle, immediate: true);
+            var initialState = (skillController != null && skillController.CurrentForm == YunZhongJunForm.Flying)
+                ? PterosaurAnimState.FlyLoop
+                : PterosaurAnimState.Idle;
+            ForcePlayState(initialState, immediate: true);
         }
 
         private void ResolveReferences()
@@ -90,9 +93,15 @@ namespace Moba.Runtime.Hero
         }
 
         /// <summary>
-        /// 每帧由角色控制器调用，根据摇杆输入幅度与技能状态驱动 idle / walk / sprint / fly_slam / attack_claw 动画。
+        /// 每帧由角色控制器调用，根据当前形态、摇杆输入幅度与技能状态驱动 idle / walk / sprint / fly_slam / attack_claw / fly_takeoff / fly_loop / fly_landing 动画。
         /// </summary>
-        public void UpdateLocomotionAnimation(float joystickMagnitude, bool isDashingSkill1, bool isPlayingFlySlam)
+        public void UpdateLocomotionAnimation(
+            YunZhongJunForm form,
+            float joystickMagnitude,
+            bool isDashingSkill1,
+            bool isPlayingFlySlam,
+            bool isTakingOff = false,
+            bool isLanding = false)
         {
             if (targetAnimator == null)
             {
@@ -110,10 +119,13 @@ namespace Moba.Runtime.Hero
             bool isAttacking = attackAnimRemaining > 0f;
 
             PterosaurAnimState desiredState = YunZhongJunLogic.EvaluatePterosaurAnimationState(
+                form,
                 joystickMagnitude,
                 isDashingSkill1,
                 isPlayingFlySlam,
                 isAttacking,
+                isTakingOff,
+                isLanding,
                 walkThreshold,
                 sprintThreshold);
 
@@ -130,6 +142,32 @@ namespace Moba.Runtime.Hero
                 targetAnimator.SetBool(IsFlyingSlamHash, isPlayingFlySlam);
                 targetAnimator.SetBool(IsAttackingHash, isAttacking);
             }
+        }
+
+        public void UpdateLocomotionAnimation(float joystickMagnitude, bool isDashingSkill1, bool isPlayingFlySlam)
+        {
+            YunZhongJunForm form = skillController != null ? skillController.CurrentForm : YunZhongJunForm.Grounded;
+            UpdateLocomotionAnimation(form, joystickMagnitude, isDashingSkill1, isPlayingFlySlam);
+        }
+
+        /// <summary>
+        /// 触发起飞冲空动画（fly_takeoff，0.80s Once）。
+        /// </summary>
+        public void PlayTakeoff()
+        {
+            if (targetAnimator == null) ResolveReferences();
+            attackAnimRemaining = 0f;
+            TransitionToState(PterosaurAnimState.FlyTakeoff, immediate: false);
+        }
+
+        /// <summary>
+        /// 触发气动刹车着陆动画（fly_landing，0.90s Once）。
+        /// </summary>
+        public void PlayLanding()
+        {
+            if (targetAnimator == null) ResolveReferences();
+            attackAnimRemaining = 0f;
+            TransitionToState(PterosaurAnimState.FlyLanding, immediate: false);
         }
 
         /// <summary>
